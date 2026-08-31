@@ -4,7 +4,7 @@ declare global {
       cookieId: string;
     }
     interface Platform {
-      env: { DATABASE_URL: string };
+      env: Env;
       context: { waitUntil(promise: Promise<unknown>): void };
     }
   }
