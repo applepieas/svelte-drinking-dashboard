@@ -7,7 +7,9 @@ import {
 	bigserial,
 	bigint,
 	uniqueIndex,
-	index
+	index,
+	check,
+	foreignKey
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { DrinkDef, DrinkKey } from '$lib/drinks';
@@ -58,6 +60,30 @@ export const entry = pgTable(
 	},
 	(t) => [
 		uniqueIndex('entry_submission_uq').on(t.eventId, t.submissionId),
-		index('entry_event_seq_idx').on(t.eventId, t.seq)
+		index('entry_event_seq_idx').on(t.eventId, t.seq),
+
+		// An undo points at the drink it cancels. Self-referencing, so it has to be
+		// declared here rather than with .references() (circular type inference).
+		foreignKey({
+			columns: [t.undoesSeq],
+			foreignColumns: [t.seq],
+			name: 'entry_undoes_fk'
+		}).onDelete('cascade'),
+
+		// A drink can only be taken back once.
+		uniqueIndex('entry_undo_uq')
+			.on(t.undoesSeq)
+			.where(sql`${t.kind} = 'undo'`),
+
+		// The log is the source of truth, so it enforces its own shape rather than
+		// trusting the code that writes to it. $type<> is compile-time only.
+		check('entry_kind_ck', sql`${t.kind} in ('drink', 'undo')`),
+		check(
+			'entry_shape_ck',
+			sql`
+				(${t.kind} = 'drink' and ${t.drinkKey} is not null and ${t.undoesSeq} is null) or
+				(${t.kind} = 'undo' and ${t.undoesSeq} is not null and ${t.drinkKey} is null)
+			`
+		)
 	]
 );
