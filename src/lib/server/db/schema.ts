@@ -34,11 +34,19 @@ export const participant = pgTable(
 			.references(() => event.id, { onDelete: 'cascade' }),
 		cookieId: uuid('cookie_id').notNull(),
 		nick: text('nick').notNull(),
-		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		// A kick is a timestamp, never a DELETE: entries reference this row, and
+		// cascading them away would tear a hole in the log.
+		kickedAt: timestamp('kicked_at', { withTimezone: true })
 	},
 	(t) => [
+		// Kicked rows keep their nick, because old entries are still attributed to it.
 		uniqueIndex('participant_nick_uq').on(t.eventId, sql`lower(${t.nick})`),
-		uniqueIndex('participant_cookie_uq').on(t.eventId, t.cookieId)
+		// One *active* participant per device, so a kicked person can rejoin
+		// under a new nick without a second live row appearing.
+		uniqueIndex('participant_cookie_uq')
+			.on(t.eventId, t.cookieId)
+			.where(sql`${t.kickedAt} is null`)
 	]
 );
 

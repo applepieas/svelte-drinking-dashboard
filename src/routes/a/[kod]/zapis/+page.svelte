@@ -7,16 +7,7 @@
 
 <main class="flex flex-col gap-6 p-6">
 	<h1>{data.event.name}</h1>
-	<p>Kód akce: {data.event.code}</p>
-	<p>{data.isHost ? 'Jsi pořadatel této akce.' : 'Jsi host.'}</p>
-
-	{#if data.event.closedAt}
-		<p>Akce už skončila.</p>
-	{:else if data.me}
-		<p>Zapisuješ jako {data.me.nick}.</p>
-	{:else}
-		<a href={resolve('/a/[kod]/pripojit', { kod: data.event.code })}>Připojit se</a>
-	{/if}
+	<p>Zapisuješ jako {data.me.nick}.</p>
 
 	<div class="flex flex-col gap-2">
 		<h2>Nápoje</h2>
@@ -27,5 +18,5 @@
 		</ul>
 	</div>
 
-	<a href={resolve('/')}>Zpět</a>
+	<a href={resolve('/a/[kod]', { kod: data.event.code })}>Na obrazovku</a>
 </main>

@@ -1,7 +1,7 @@
 declare global {
 	namespace App {
 		interface Locals {
-			cookieId: string;
+			cookieId: string | null;
 		}
 		interface Platform {
 			env: Env;
