@@ -8,3 +8,9 @@ bun.lockb
 # Miscellaneous
 /static/
 /drizzle/
+
+# Generovane soubory
+worker-configuration.d.ts
+
+# Scaffoldova dokumentace pro AI nastroje (prettier na ni pada)
+/.github/
