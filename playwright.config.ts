@@ -15,6 +15,9 @@ if (databaseUrl === process.env.DATABASE_URL) {
 	throw new Error('TEST_DATABASE_URL must not be the development database.');
 }
 
+/** Shared with the demo test, which seeds the demo through the same endpoint. */
+export const MAINTENANCE_SECRET = 'e2e-maintenance-secret';
+
 export default defineConfig({
 	testDir: 'e2e',
 	fullyParallel: true,
@@ -32,7 +35,9 @@ export default defineConfig({
 			DATABASE_URL: databaseUrl,
 			// The suite creates an event per test from a single address, which is
 			// exactly what the production limit is there to stop.
-			MAX_EVENTS_PER_HOUR: '1000'
+			MAX_EVENTS_PER_HOUR: '1000',
+			// The demo test drives the maintenance endpoint the way cron will.
+			MAINTENANCE_SECRET: MAINTENANCE_SECRET
 		}
 	},
 

@@ -7,8 +7,8 @@ A SvelteKit rebuild of a Next.js app that real people used at several events. Th
 deployed demo will run on fictional data only.
 
 > **Status: work in progress.** Everything below is implemented and covered by
-> tests. Not yet done: deployment, scheduled deletion of expired events, and a
-> seeded demo event.
+> tests. Not yet done: deployment, and wiring the maintenance endpoint to a cron
+> trigger in production.
 
 ## Stack
 
@@ -70,6 +70,19 @@ gradually instead of appearing all at once, and the floor at zero sits inside
 the loop so elimination stops at sober rather than running up a debt that would
 swallow the next drink.
 
+**The demo is generated, never recorded.** `/demo` points at a permanent event
+whose participants and history are invented. Its timeline is a pure function of
+the clock: a given minute always produces the same drink by the same person, so
+the submission id can be derived from the minute and two overlapping maintenance
+runs collapse into one row instead of two. Real events this was used at had real
+people on the board, and none of those names belong on a public page.
+
+**Housekeeping is an endpoint, not a `scheduled` handler.** `adapter-cloudflare`
+emits a worker with only `fetch`, so `POST /api/udrzba` does the work instead —
+delete events past their retention window, keep the demo running — and a cron
+trigger calls it. It refuses to run without `MAINTENANCE_SECRET`, and compares
+the key as a digest rather than as a string.
+
 **Rate limiting reads the log.** Because every drink is already a timestamped
 row, spam protection needs no store of its own. Event creation is limited per
 address, and only a salted digest of that address is ever stored.
@@ -109,6 +122,17 @@ pnpm test                                  # unit; integration too when TEST_DAT
 pnpm exec playwright install chromium      # once
 pnpm test:e2e                              # end-to-end, including a no-JavaScript run
 ```
+
+## Maintenance and the demo
+
+```sh
+curl -X POST localhost:5173/api/udrzba -H "authorization: Bearer $MAINTENANCE_SECRET"
+```
+
+Run once, this seeds the demo with a couple of hours of history and makes
+`/demo` resolve. Run on a schedule, it keeps the demo moving, restarts the party
+every six hours, and deletes events whose 30 days are up. It is safe to call
+repeatedly and safe to call twice at once.
 
 ## Scripts
 
