@@ -3,7 +3,12 @@
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
-		"checkJs": true,
+		// Off on purpose. There is no JavaScript in src — everything here is
+		// TypeScript. The only .js the compiler ever sees is the adapter bundle,
+		// which `wrangler types` pulls in through a type reference to
+		// .svelte-kit/cloudflare/_worker, and which no `exclude` can keep out
+		// because it arrives as an import rather than as a root file.
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,

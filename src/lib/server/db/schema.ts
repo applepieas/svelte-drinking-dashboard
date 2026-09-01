@@ -14,16 +14,23 @@ import {
 import { sql } from 'drizzle-orm';
 import type { DrinkDef, DrinkKey } from '$lib/drinks';
 
-export const event = pgTable('event', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	code: text('code').notNull().unique(),
-	name: text('name').notNull(),
-	hostTokenHash: text('host_token_hash').notNull(),
-	drinks: jsonb('drinks').$type<DrinkDef[]>().notNull(),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-	closedAt: timestamp('closed_at', { withTimezone: true }),
-	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
-});
+export const event = pgTable(
+	'event',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		code: text('code').notNull().unique(),
+		name: text('name').notNull(),
+		hostTokenHash: text('host_token_hash').notNull(),
+		drinks: jsonb('drinks').$type<DrinkDef[]>().notNull(),
+		// Salted digest, never the address itself. Enough to rate limit event
+		// creation, useless for identifying anybody afterwards.
+		creatorIpHash: text('creator_ip_hash'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		closedAt: timestamp('closed_at', { withTimezone: true }),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+	},
+	(t) => [index('event_creator_idx').on(t.creatorIpHash, t.createdAt)]
+);
 
 export const participant = pgTable(
 	'participant',

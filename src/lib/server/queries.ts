@@ -1,16 +1,8 @@
-import { and, desc, eq, isNull, notExists, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from './db';
 import { entry, event, participant } from './db/schema';
-import type { DrinkDef } from '$lib/drinks';
-
-/** Maps an entry's drink key to its ethanol content, per this event's snapshot. */
-function drinkEthanolCase(drinks: DrinkDef[]) {
-	const branches = drinks.map(
-		(drink) => sql`when ${entry.drinkKey} = ${drink.key} then ${drink.ethanolMl}`
-	);
-	return sql`case ${sql.join(branches, sql` `)} else 0 end`;
-}
+import type { LogEntry } from '$lib/events';
 
 /** An entry is "live" when no undo row points at it. */
 const undone = alias(entry, 'undone');
@@ -44,69 +36,65 @@ export function findNickHolder(eventId: string, nick: string) {
 }
 
 /**
- * Ranked by ethanol, not by number of drinks — a shot and a beer are not the
- * same achievement.
+ * The raw log, nick attached, oldest first.
  *
- * The millilitres come from the event's own `drinks` snapshot rather than the
- * global DRINKS table, so editing a drink definition later cannot rewrite what
- * an old event scored. That snapshot is compiled into a CASE here because the
- * value deliberately lives on the event, not on every entry row.
+ * Aggregation deliberately does not happen here. The screen reduces the same
+ * rows in the browser as events stream in, so keeping a second implementation in
+ * SQL would be two things to keep in step.
  */
-export function getLeaderboard(eventId: string, drinks: DrinkDef[]) {
-	if (drinks.length === 0) return Promise.resolve([]);
-
-	const ethanolMl = sql<number>`sum(${drinkEthanolCase(drinks)})::int`;
-
-	return db
-		.select({
-			nick: participant.nick,
-			ethanolMl,
-			drinks: sql<number>`count(*)::int`
-		})
-		.from(entry)
-		.innerJoin(participant, eq(participant.id, entry.participantId))
-		.where(
-			and(
-				eq(entry.eventId, eventId),
-				eq(entry.kind, 'drink'),
-				// Kicked people drop off the board, but their rows stay in the log.
-				isNull(participant.kickedAt),
-				isLive
-			)
-		)
-		.groupBy(participant.id, participant.nick)
-		.orderBy(desc(ethanolMl), participant.nick);
-}
-
-export function getRecentEntries(eventId: string, limit = 10) {
-	return db
+export async function getEventEntries(
+	eventId: string,
+	sinceSeq = 0,
+	limit = 2000
+): Promise<LogEntry[]> {
+	const rows = await db
 		.select({
 			seq: entry.seq,
 			nick: participant.nick,
+			kind: entry.kind,
 			drinkKey: entry.drinkKey,
-			createdAt: entry.createdAt
+			undoesSeq: entry.undoesSeq,
+			at: entry.createdAt,
+			kicked: sql<boolean>`${participant.kickedAt} is not null`
 		})
 		.from(entry)
 		.innerJoin(participant, eq(participant.id, entry.participantId))
-		.where(
-			and(
-				eq(entry.eventId, eventId),
-				eq(entry.kind, 'drink'),
-				// Kicked people are gone from the screen entirely, ticker included.
-				isNull(participant.kickedAt),
-				isLive
-			)
-		)
-		.orderBy(desc(entry.seq))
+		.where(and(eq(entry.eventId, eventId), gt(entry.seq, sinceSeq)))
+		.orderBy(asc(entry.seq))
 		.limit(limit);
+
+	return rows.map((row) => ({ ...row, at: row.at.toISOString() }));
 }
 
-export async function countDrinks(participantId: string) {
+/**
+ * Fingerprint of everything about an event that the entry log cannot express.
+ * When it changes, watchers are told to refetch instead of patching.
+ */
+export async function getEventVersion(eventId: string): Promise<string> {
 	const [row] = await db
-		.select({ total: sql<number>`count(*)::int` })
+		.select({
+			closedAt: event.closedAt,
+			participants: sql<number>`count(${participant.id})::int`,
+			kicked: sql<number>`count(${participant.kickedAt})::int`
+		})
+		.from(event)
+		.leftJoin(participant, eq(participant.eventId, event.id))
+		.where(eq(event.id, eventId))
+		.groupBy(event.id, event.closedAt);
+
+	if (!row) return 'gone';
+	return `${row.closedAt?.toISOString() ?? 'open'}|${row.participants}|${row.kicked}`;
+}
+
+/** One participant's own standing drinks, oldest first. Feeds the phone's estimate. */
+export async function getParticipantDrinks(participantId: string) {
+	const rows = await db
+		.select({ seq: entry.seq, drinkKey: entry.drinkKey, at: entry.createdAt })
 		.from(entry)
-		.where(and(eq(entry.participantId, participantId), eq(entry.kind, 'drink'), isLive));
-	return row?.total ?? 0;
+		.where(and(eq(entry.participantId, participantId), eq(entry.kind, 'drink'), isLive))
+		.orderBy(asc(entry.seq));
+
+	return rows.map((row) => ({ ...row, at: row.at.toISOString() }));
 }
 
 /** The most recent drink that has not been taken back yet. */
@@ -118,4 +106,18 @@ export async function findLastLiveDrink(participantId: string) {
 		.orderBy(desc(entry.seq))
 		.limit(1);
 	return row ?? null;
+}
+
+/** Everyone who ever joined, kicked included — the host needs to see both. */
+export function listParticipants(eventId: string) {
+	return db
+		.select({
+			id: participant.id,
+			nick: participant.nick,
+			kickedAt: participant.kickedAt,
+			createdAt: participant.createdAt
+		})
+		.from(participant)
+		.where(eq(participant.eventId, eventId))
+		.orderBy(participant.createdAt);
 }

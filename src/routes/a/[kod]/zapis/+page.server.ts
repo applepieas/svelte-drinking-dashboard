@@ -5,11 +5,12 @@ import { UNDO_WINDOW_SECONDS } from '$lib/entries';
 import { normalizeCode } from '$lib/server/codes';
 import { addDrink, undoDrink } from '$lib/server/commands';
 import { isUniqueViolation } from '$lib/server/db/errors';
+import { checkDrinkRate } from '$lib/server/ratelimit';
 import {
-	countDrinks,
 	findActiveParticipant,
 	findLastLiveDrink,
-	getEventByCode
+	getEventByCode,
+	getParticipantDrinks
 } from '$lib/server/queries';
 
 /**
@@ -37,16 +38,24 @@ function isUndoable(createdAt: Date): boolean {
 
 export const load: PageServerLoad = async (event) => {
 	const { me } = await requireContext(event);
-	const last = await findLastLiveDrink(me.id);
+
+	// The phone's own drinks, which are also what the blood alcohol estimate is
+	// computed from — in the browser, from a profile the server never receives.
+	const myDrinks = await getParticipantDrinks(me.id);
+	const last = myDrinks.at(-1) ?? null;
+	const undoUntil = last ? new Date(last.at).getTime() + UNDO_WINDOW_SECONDS * 1000 : 0;
 
 	return {
 		// Returned again so the page type knows a participant always exists here.
 		me: { nick: me.nick },
-		myTotal: await countDrinks(me.id),
+		myDrinks,
 		// One token per render. A second POST carrying the same one is ignored by
 		// the database, so a double tap or a back-button resubmit costs nothing.
 		submissionId: crypto.randomUUID(),
-		undoable: last && isUndoable(last.createdAt) ? { seq: last.seq, drinkKey: last.drinkKey } : null
+		undoable:
+			last && undoUntil > Date.now()
+				? { seq: last.seq, drinkKey: last.drinkKey, until: new Date(undoUntil).toISOString() }
+				: null
 	};
 };
 
@@ -65,6 +74,11 @@ export const actions: Actions = {
 		// Validated against this event's snapshot, not the global DRINKS list.
 		if (!event.drinks.some((drink) => drink.key === drinkKey)) {
 			return fail(400, { error: 'Tenhle nápoj se na téhle akci nepije.' });
+		}
+
+		const rate = await checkDrinkRate(me.id);
+		if (!rate.allowed) {
+			return fail(429, { error: `Moment, tohle bylo rychle. Zkus to za ${rate.retryAfter} s.` });
 		}
 
 		await addDrink({ eventId: event.id, participantId: me.id, drinkKey, submissionId });

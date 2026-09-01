@@ -1,42 +1,78 @@
 # Na ex
 
-Real-time party drinks dashboard. People log what they drink from their phones; a shared
-screen (TV, projector, laptop) shows the leaderboard and a live ticker as it happens.
+Real-time party drinks dashboard. People log what they drink from their phones; a
+shared screen shows the standings and a live ticker as it happens.
 
-This is a SvelteKit rebuild of a Next.js app that was actually used by real people at
-several events. The deployed demo runs on fictional data only.
+A SvelteKit rebuild of a Next.js app that real people used at several events. The
+deployed demo will run on fictional data only.
 
-> **Status: work in progress.** The schema, shared types and database layer are in place.
-> Routes are being built incrementally — see the commit history.
+> **Status: work in progress.** Everything below is implemented and covered by
+> tests. Not yet done: deployment, generated migrations, scheduled deletion of
+> expired events, and a seeded demo event.
 
 ## Stack
 
-|           |                                                        |
-| --------- | ------------------------------------------------------ |
-| Framework | SvelteKit + TypeScript, Svelte 5 (runes)               |
-| Realtime  | Server-Sent Events via `+server.ts` (`ReadableStream`) |
-| Database  | Neon Postgres + Drizzle ORM                            |
-| Hosting   | Cloudflare Workers (`adapter-cloudflare`)              |
-| Styling   | Tailwind CSS v4                                        |
+|           |                                                                   |
+| --------- | ----------------------------------------------------------------- |
+| Framework | SvelteKit + TypeScript, Svelte 5 (runes)                          |
+| Realtime  | Server-Sent Events via `+server.ts` (`ReadableStream`)            |
+| Database  | Neon Postgres + Drizzle ORM                                       |
+| Target    | Cloudflare Workers (`adapter-cloudflare`)                         |
+| Styling   | Tailwind CSS v4 — placeholder only, the visual design comes later |
+| Tests     | Vitest (unit + integration) and Playwright (end-to-end)           |
 
 ## Architecture notes
 
-**Append-only event log, not a mutable counter.** Every drink is a row in `entry`. There is
-no `total` column anywhere — the leaderboard is a query. Concurrent writes can't clobber
-each other, "undo" is a compensating row rather than a `DELETE`, and the full history of an
-event is available for free.
+**An append-only log, not a counter.** Every drink is a row in `entry`; there is
+no `total` column anywhere. Concurrent writes cannot clobber each other, "undo"
+is a compensating row rather than a `DELETE`, and a kick is a timestamp, so the
+history of an event stays intact even when someone is removed from the standings.
 
-**SSE, not WebSockets.** The data flow is one-directional: server to screen. Phones write
-over ordinary HTTP form posts. Every SSE message carries an `id:`, so a screen that drops
-its connection replays what it missed via `Last-Event-ID`.
+**The log enforces its own shape.** `CHECK` constraints reject a drink with no
+drink on it and an undo that points at nothing; a partial unique index makes it
+impossible to take the same drink back twice. TypeScript unions stop at the
+process boundary, so the guarantees live in the database.
 
-**The phone client works without JavaScript.** Logging a drink is a plain `<form>` POST
-backed by a SvelteKit form action. `use:enhance` upgrades it to an optimistic, no-reload
-submit when JS is available, but the no-JS path is the one that defines behaviour.
+**Idempotence by unique index.** Every submission carries an id, unique per
+event. A double tap, a retried request, or a back-button resubmit all resolve to
+one row without the application having to think about it.
 
-**Blood alcohol estimation runs entirely client-side.** Body weight is never sent to the
-server or stored. Only the ethanol content of each drink is persisted, so the formula can
-change without a migration and without stale values in the database.
+**One reducer for the standings.** `reduceLog` turns raw entries into the
+leaderboard, and it runs on the server during SSR and again in the browser as
+events stream in. A live screen and a reloaded one cannot disagree, because
+there is only one implementation.
+
+**Ranking is by ethanol, not by count.** The millilitres come from the event's
+own snapshot of its drinks, so editing a drink definition later cannot rewrite
+what an old event scored.
+
+**SSE, not WebSockets.** The flow is one-directional, server to screen. Phones
+write over ordinary HTTP form posts. Every message carries an `id:`, so a screen
+that drops its connection replays what it missed via `Last-Event-ID`.
+
+**The delivery mechanism is behind an interface.** A write and a stream are
+separate Worker invocations sharing no memory, so `EventBus` is implemented by
+re-reading the log on a timer. The polling reaches slightly further back than the
+last sequence number it saw, because `bigserial` hands out numbers before commit
+and a strict `seq > last` query can step over a row for good. Swapping in a
+Durable Object — one instance per event, holding the streams — would not change
+anything above the interface.
+
+**The phone client works without JavaScript.** Logging a drink, taking it back,
+joining, creating and closing an event are all plain form posts. `use:enhance`
+adds optimistic updates on top, and an end-to-end project runs the whole suite
+with JavaScript switched off to keep it that way.
+
+**Blood alcohol is estimated in the browser.** Body weight and sex are kept in
+`localStorage` and never sent anywhere. The estimate integrates minute by minute
+rather than applying Widmark's formula directly, so alcohol is absorbed
+gradually instead of appearing all at once, and the floor at zero sits inside
+the loop so elimination stops at sober rather than running up a debt that would
+swallow the next drink.
+
+**Rate limiting reads the log.** Because every drink is already a timestamped
+row, spam protection needs no store of its own. Event creation is limited per
+address, and only a salted digest of that address is ever stored.
 
 ## Running locally
 
@@ -47,6 +83,18 @@ pnpm db:push
 pnpm dev
 ```
 
+## Tests
+
+Unit tests run on their own. Integration and end-to-end tests need
+`TEST_DATABASE_URL` pointing at a **separate** database — they create and delete
+rows, and a setup guard refuses to run if it matches `DATABASE_URL`.
+
+```sh
+pnpm test                                  # unit; integration too when TEST_DATABASE_URL is set
+pnpm exec playwright install chromium      # once
+pnpm test:e2e                              # end-to-end, including a no-JavaScript run
+```
+
 ## Scripts
 
 | Command          |                                 |
@@ -55,5 +103,6 @@ pnpm dev
 | `pnpm check`     | Wrangler types + `svelte-check` |
 | `pnpm lint`      | Prettier + ESLint               |
 | `pnpm test`      | Vitest                          |
+| `pnpm test:e2e`  | Playwright                      |
 | `pnpm db:push`   | sync schema to the database     |
 | `pnpm db:studio` | Drizzle Studio                  |

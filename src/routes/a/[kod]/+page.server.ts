@@ -1,20 +1,16 @@
 import type { PageServerLoad } from './$types';
-import { getEventByCode, getLeaderboard, getRecentEntries } from '$lib/server/queries';
+import { encodeQrPath } from '$lib/server/qr';
+import { getEventByCode, getEventEntries } from '$lib/server/queries';
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, url }) => {
 	const { event } = await parent();
-	// The layout already proved this code resolves, so no 404 handling here.
+	const joinUrl = new URL(`/a/${event.code}/pripojit`, url.origin).toString();
+
+	// The layout already proved this code resolves.
 	const row = await getEventByCode(event.code);
-	if (!row) return { leaderboard: [], recent: [], totalEthanolMl: 0 };
+	const entries = row ? await getEventEntries(row.id) : [];
 
-	const [leaderboard, recent] = await Promise.all([
-		getLeaderboard(row.id, row.drinks),
-		getRecentEntries(row.id)
-	]);
-
-	return {
-		leaderboard,
-		recent,
-		totalEthanolMl: leaderboard.reduce((sum, entry) => sum + entry.ethanolMl, 0)
-	};
+	// Raw log, not a summary: the page reduces it, and keeps reducing it as more
+	// rows arrive over the stream.
+	return { entries, joinUrl, qr: encodeQrPath(joinUrl) };
 };

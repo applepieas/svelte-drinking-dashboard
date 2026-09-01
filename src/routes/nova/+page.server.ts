@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { event } from '$lib/server/db/schema';
 import { DRINKS, isDrinkKey } from '$lib/drinks';
 import { generateCode } from '$lib/server/codes';
+import { checkEventCreationRate, hashIp } from '$lib/server/ratelimit';
 import { hashToken, newHostToken } from '$lib/server/tokens';
 
 const NAME_MIN = 2;
@@ -12,7 +13,7 @@ const RETENTION_SECONDS = 30 * 24 * 60 * 60;
 const CODE_ATTEMPTS = 5;
 
 export const actions: Actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, getClientAddress }) => {
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
 		// Never trust form data, even from a form we wrote ourselves.
@@ -29,6 +30,16 @@ export const actions: Actions = {
 			return fail(400, { name, keys, error: 'Vyber aspoň jeden typ nápoje.' });
 		}
 
+		const ipHash = await hashIp(getClientAddress());
+		const rate = await checkEventCreationRate(ipHash);
+		if (!rate.allowed) {
+			return fail(429, {
+				name,
+				keys,
+				error: `Zakládáš akce moc rychle. Zkus to za ${rate.retryAfter} s.`
+			});
+		}
+
 		const hostToken = newHostToken();
 		const hostTokenHash = await hashToken(hostToken);
 		const expiresAt = new Date(Date.now() + RETENTION_SECONDS * 1000);
@@ -43,6 +54,7 @@ export const actions: Actions = {
 					code: generateCode(),
 					name,
 					hostTokenHash,
+					creatorIpHash: ipHash,
 					// Snapshot the drinks, so changing DRINKS later cannot rewrite history.
 					drinks: keys.map((key) => DRINKS[key]),
 					expiresAt

@@ -1,5 +1,6 @@
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from './db';
-import { entry } from './db/schema';
+import { entry, event, participant } from './db/schema';
 import type { DrinkKey } from '$lib/drinks';
 
 /**
@@ -37,4 +38,35 @@ export async function undoDrink(values: {
 		.onConflictDoNothing({ target: [entry.eventId, entry.submissionId] })
 		.returning({ seq: entry.seq });
 	return row ?? null;
+}
+
+export function closeEvent(eventId: string) {
+	return db.update(event).set({ closedAt: new Date() }).where(eq(event.id, eventId));
+}
+
+export function reopenEvent(eventId: string) {
+	return db.update(event).set({ closedAt: null }).where(eq(event.id, eventId));
+}
+
+/**
+ * A kick is a timestamp. The person's entries stay in the log and stay attributed
+ * to the nick they used, which is also why that nick is not freed up afterwards.
+ */
+export function kickParticipant(eventId: string, participantId: string) {
+	return db
+		.update(participant)
+		.set({ kickedAt: new Date() })
+		.where(
+			and(
+				eq(participant.id, participantId),
+				eq(participant.eventId, eventId),
+				isNull(participant.kickedAt)
+			)
+		)
+		.returning({ nick: participant.nick });
+}
+
+/** The one place data really is destroyed. Participants and entries cascade. */
+export function deleteEvent(eventId: string) {
+	return db.delete(event).where(eq(event.id, eventId));
 }

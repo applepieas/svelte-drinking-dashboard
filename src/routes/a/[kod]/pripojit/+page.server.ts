@@ -7,6 +7,7 @@ import { NICK_MAX, NICK_MIN, normalizeNick } from '$lib/nicks';
 import { normalizeCode } from '$lib/server/codes';
 import { ensureCookieId } from '$lib/server/identity';
 import { findActiveParticipant, findNickHolder, getEventByCode } from '$lib/server/queries';
+import { isEventFull, MAX_PARTICIPANTS } from '$lib/server/ratelimit';
 
 export const load: PageServerLoad = async ({ parent, params }) => {
 	const { event, me } = await parent();
@@ -39,6 +40,13 @@ export const actions: Actions = {
 
 		const cookieId = ensureCookieId(requestEvent);
 		if (await findActiveParticipant(row.id, cookieId)) redirect(303, `/a/${code}/zapis`);
+
+		if (await isEventFull(row.id)) {
+			return fail(409, {
+				nick: submitted,
+				error: `Akce je plná, víc než ${MAX_PARTICIPANTS} lidí do žebříčku nepustíme.`
+			});
+		}
 
 		// Checked for the person's benefit. The unique index below is what actually
 		// protects the data — this lookup only exists to produce a decent message.
