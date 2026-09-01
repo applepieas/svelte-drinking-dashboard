@@ -7,8 +7,8 @@ A SvelteKit rebuild of a Next.js app that real people used at several events. Th
 deployed demo will run on fictional data only.
 
 > **Status: work in progress.** Everything below is implemented and covered by
-> tests. Not yet done: deployment, generated migrations, scheduled deletion of
-> expired events, and a seeded demo event.
+> tests. Not yet done: deployment, scheduled deletion of expired events, and a
+> seeded demo event.
 
 ## Stack
 
@@ -79,9 +79,24 @@ address, and only a salted digest of that address is ever stored.
 ```sh
 pnpm install
 cp .env.example .env     # then set DATABASE_URL to a Neon connection string
-pnpm db:push
+pnpm db:migrate
 pnpm dev
 ```
+
+### Changing the schema
+
+```sh
+# 1. edit src/lib/server/db/schema.ts
+pnpm db:generate         # writes drizzle/NNNN_*.sql
+cat drizzle/NNNN_*.sql   # 2. read it — this is the point of the workflow
+pnpm db:migrate          # 3. apply, to every database that needs it
+```
+
+`drizzle-kit push` is deliberately not wired up. It cost this project two bugs:
+it silently declined to add a `WHERE` clause to an index that already existed,
+and it left one database a column behind another, because nothing recorded what
+had been applied where. A migration file is reviewable, repeatable and tracked
+in `drizzle.__drizzle_migrations`.
 
 ## Tests
 
@@ -97,12 +112,13 @@ pnpm test:e2e                              # end-to-end, including a no-JavaScri
 
 ## Scripts
 
-| Command          |                                 |
-| ---------------- | ------------------------------- |
-| `pnpm dev`       | dev server                      |
-| `pnpm check`     | Wrangler types + `svelte-check` |
-| `pnpm lint`      | Prettier + ESLint               |
-| `pnpm test`      | Vitest                          |
-| `pnpm test:e2e`  | Playwright                      |
-| `pnpm db:push`   | sync schema to the database     |
-| `pnpm db:studio` | Drizzle Studio                  |
+| Command            |                                       |
+| ------------------ | ------------------------------------- |
+| `pnpm dev`         | dev server                            |
+| `pnpm check`       | Wrangler types + `svelte-check`       |
+| `pnpm lint`        | Prettier + ESLint                     |
+| `pnpm test`        | Vitest                                |
+| `pnpm test:e2e`    | Playwright                            |
+| `pnpm db:generate` | write a migration from schema changes |
+| `pnpm db:migrate`  | apply pending migrations              |
+| `pnpm db:studio`   | Drizzle Studio                        |
