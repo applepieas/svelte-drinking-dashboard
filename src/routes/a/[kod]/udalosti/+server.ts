@@ -9,11 +9,21 @@ import { getEventByCode } from '$lib/server/queries';
 const HEARTBEAT_MS = 15_000;
 
 /**
- * Streams are retired on a schedule rather than left to live forever. The
- * browser reconnects by itself and resumes from Last-Event-ID, so nothing is
- * lost, and no leak can outlive this.
+ * How long the browser waits before reconnecting.
+ *
+ * Streams here are deliberately short — they retire before spending the CPU one
+ * invocation is allowed — so the default of about three seconds would be a
+ * visible gap between them rather than a rare hiccup. Half a second makes the
+ * seam disappear.
  */
-const MAX_STREAM_MS = 10 * 60_000;
+const RETRY_MS = 500;
+
+/**
+ * A backstop only. In practice the bus retires a stream first, once it has spent
+ * the subrequest budget the free plan allows; this exists so a stream that
+ * somehow stops polling still cannot live forever.
+ */
+const MAX_STREAM_MS = 5 * 60_000;
 
 export const GET: RequestHandler = async ({ params, url, request }) => {
 	const code = normalizeCode(params.kod);
@@ -74,7 +84,16 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 				}
 			};
 
-			unsubscribe = bus.subscribe({ eventId: event.id, fromSeq, onMessage: send });
+			write(`retry: ${RETRY_MS}\n\n`);
+
+			unsubscribe = bus.subscribe({
+				eventId: event.id,
+				fromSeq,
+				onMessage: send,
+				// Closing rather than erroring: the browser treats it as a dropped
+				// connection and reconnects with Last-Event-ID.
+				onBudgetSpent: () => stop()
+			});
 			heartbeat = setInterval(() => {
 				if (!write(': ping\n\n')) stop();
 			}, HEARTBEAT_MS);

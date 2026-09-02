@@ -5,10 +5,12 @@
 	import type { LogEntry } from '$lib/events';
 	import HostViewToggle from '$lib/components/HostViewToggle.svelte';
 	import { mergeBySeq, reduceLog } from '$lib/leaderboard';
-	import { QUIET_ZONE } from '$lib/qr';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	/** How long a gap may last before it is worth telling the room about. */
+	const RECONNECT_GRACE_MS = 8000;
 
 	/** Rows that arrived over the stream since the last full load. */
 	let streamed = $state<LogEntry[]>([]);
@@ -33,6 +35,7 @@
 		const source = new EventSource(`/a/${code}/udalosti?od=${from}`);
 
 		source.addEventListener('open', () => {
+			clearTimeout(graceTimer);
 			connected = true;
 			everConnected = true;
 		});
@@ -47,12 +50,22 @@
 			void invalidateAll();
 		});
 
-		// EventSource reconnects on its own; this only drives the banner.
+		/**
+		 * Streams are deliberately short-lived, so a closed connection is the
+		 * normal case rather than a fault. Announcing every one of them would
+		 * leave a permanent "connection lost" banner on a screen that is working
+		 * perfectly, so the warning waits to see whether the reconnect succeeds.
+		 */
+		let graceTimer: ReturnType<typeof setTimeout> | undefined;
 		source.onerror = () => {
-			connected = false;
+			clearTimeout(graceTimer);
+			graceTimer = setTimeout(() => (connected = false), RECONNECT_GRACE_MS);
 		};
 
-		return () => source.close();
+		return () => {
+			clearTimeout(graceTimer);
+			source.close();
+		};
 	});
 </script>
 
@@ -116,22 +129,11 @@
 
 	{#if !data.event.closedAt}
 		<section class="card flex flex-wrap items-center gap-4">
-			<svg
+			<img
 				class="h-40 w-40 shrink-0"
-				viewBox="{-QUIET_ZONE} {-QUIET_ZONE} {data.qr.extent} {data.qr.extent}"
-				shape-rendering="crispEdges"
-				role="img"
-				aria-label="QR kód pro připojení k akci {data.event.code}"
-			>
-				<rect
-					x={-QUIET_ZONE}
-					y={-QUIET_ZONE}
-					width={data.qr.extent}
-					height={data.qr.extent}
-					fill="#fff"
-				/>
-				<path d={data.qr.d} fill="#000" />
-			</svg>
+				src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+				alt="QR kód pro připojení k akci {data.event.code}"
+			/>
 			<div class="flex flex-col gap-1">
 				<h2 class="font-semibold">Přidej se</h2>
 				<p class="muted text-sm">Naskenuj kód, nebo zadej na {data.joinUrl.split('/a/')[0]}</p>

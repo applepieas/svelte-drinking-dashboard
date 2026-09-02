@@ -42,28 +42,59 @@ export function findNickHolder(eventId: string, nick: string) {
  * rows in the browser as events stream in, so keeping a second implementation in
  * SQL would be two things to keep in step.
  */
-export async function getEventEntries(
-	eventId: string,
-	sinceSeq = 0,
-	limit = 2000
-): Promise<LogEntry[]> {
+/**
+ * The whole log is serialised into the page and reduced there, so the page can
+ * only hold so much of it. A real event runs to a few hundred rows; past this
+ * ceiling the oldest are dropped and the standings would understate them.
+ */
+const SNAPSHOT_LIMIT = 500;
+
+const logColumns = {
+	seq: entry.seq,
+	nick: participant.nick,
+	kind: entry.kind,
+	drinkKey: entry.drinkKey,
+	undoesSeq: entry.undoesSeq,
+	at: entry.createdAt,
+	kicked: sql<boolean>`${participant.kickedAt} is not null`
+};
+
+type LogRow = { at: Date } & Omit<LogEntry, 'at'>;
+const toLogEntries = (rows: LogRow[]): LogEntry[] =>
+	rows.map((row) => ({ ...row, at: row.at.toISOString() }));
+
+/** Rows added since a sequence number. Used by the stream, so normally empty. */
+export async function getEventEntries(eventId: string, sinceSeq = 0): Promise<LogEntry[]> {
 	const rows = await db
-		.select({
-			seq: entry.seq,
-			nick: participant.nick,
-			kind: entry.kind,
-			drinkKey: entry.drinkKey,
-			undoesSeq: entry.undoesSeq,
-			at: entry.createdAt,
-			kicked: sql<boolean>`${participant.kickedAt} is not null`
-		})
+		.select(logColumns)
 		.from(entry)
 		.innerJoin(participant, eq(participant.id, entry.participantId))
 		.where(and(eq(entry.eventId, eventId), gt(entry.seq, sinceSeq)))
 		.orderBy(asc(entry.seq))
+		.limit(SNAPSHOT_LIMIT);
+
+	return toLogEntries(rows);
+}
+
+/**
+ * The most recent slice of the log, oldest first.
+ *
+ * Newest rather than oldest matters: taking the first N of a long event would
+ * pin the screen to the start of the night and silently ignore everything since.
+ */
+export async function getRecentEventEntries(
+	eventId: string,
+	limit = SNAPSHOT_LIMIT
+): Promise<LogEntry[]> {
+	const rows = await db
+		.select(logColumns)
+		.from(entry)
+		.innerJoin(participant, eq(participant.id, entry.participantId))
+		.where(eq(entry.eventId, eventId))
+		.orderBy(desc(entry.seq))
 		.limit(limit);
 
-	return rows.map((row) => ({ ...row, at: row.at.toISOString() }));
+	return toLogEntries(rows.reverse());
 }
 
 /**

@@ -7,8 +7,7 @@ A SvelteKit rebuild of a Next.js app that real people used at several events. Th
 deployed demo will run on fictional data only.
 
 > **Status: work in progress.** Everything below is implemented and covered by
-> tests. Not yet done: deployment, and wiring the maintenance endpoint to a cron
-> trigger in production.
+> tests, and the project is ready to deploy — see _Deploying_ at the bottom.
 
 ## Stack
 
@@ -83,6 +82,19 @@ delete events past their retention window, keep the demo running — and a cron
 trigger calls it. It refuses to run without `MAINTENANCE_SECRET`, and compares
 the key as a digest rather than as a string.
 
+**Streams retire themselves to fit the free plan.** Workers on the free plan
+allow 50 external subrequests per invocation, and every poll of the log is one
+of them. Rather than degrade partway through an evening, a stream counts its own
+queries and closes cleanly once it has spent its budget — about a minute. The
+browser reconnects and resumes from `Last-Event-ID`, which was written to
+survive dropped connections and turns out to be exactly what makes a
+deliberately short-lived stream invisible.
+
+**The join code is a cached image, not part of the page.** Encoding a QR was the
+most expensive thing the screen did, on a runtime that allows 10 ms of CPU per
+request, and its result never changes for a given code. As its own response it
+is cached at the edge and the Worker stops running for it.
+
 **Rate limiting reads the log.** Because every drink is already a timestamped
 row, spam protection needs no store of its own. Event creation is limited per
 address, and only a salted digest of that address is ever stored.
@@ -146,3 +158,35 @@ repeatedly and safe to call twice at once.
 | `pnpm db:generate` | write a migration from schema changes |
 | `pnpm db:migrate`  | apply pending migrations              |
 | `pnpm db:studio`   | Drizzle Studio                        |
+
+## Deploying
+
+Cloudflare Workers on the free plan, and a Postgres database on Neon. Two
+Workers: the app, and a small one that owns the cron schedule — `adapter-cloudflare`
+generates a worker exporting only `fetch`, so a Cron Trigger has nothing to call
+on the app itself.
+
+```sh
+pnpm wrangler login
+
+# 1. the app
+pnpm wrangler secret put DATABASE_URL       # production connection string
+pnpm wrangler secret put MAINTENANCE_SECRET # any long random value
+pnpm wrangler secret put RATE_LIMIT_SALT    # any long random value
+pnpm build && pnpm wrangler deploy
+
+# 2. the scheduler, pointed at the app that was just deployed
+pnpm wrangler secret put MAINTENANCE_SECRET -c cron/wrangler.jsonc  # the same value
+pnpm wrangler deploy -c cron/wrangler.jsonc \
+  --var MAINTENANCE_URL:https://<the-app>.workers.dev/api/udrzba
+```
+
+Migrations are applied from a machine that has the production connection string,
+not from the Worker:
+
+```sh
+DATABASE_URL=<production> pnpm db:migrate
+```
+
+The demo seeds itself on the first maintenance run, so `/demo` starts working
+within a couple of minutes of the scheduler going live.

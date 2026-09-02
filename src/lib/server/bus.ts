@@ -7,6 +7,11 @@ export interface Subscription {
 	fromSeq: number;
 	/** Returning false means the consumer is gone and polling should stop. */
 	onMessage: (message: StreamMessage) => boolean;
+	/**
+	 * Called when this subscription has spent its query budget. The stream should
+	 * close cleanly so the browser reconnects and starts a fresh one.
+	 */
+	onBudgetSpent: () => void;
 }
 
 export interface EventBus {
@@ -19,7 +24,33 @@ export interface EventBus {
 	subscribe(subscription: Subscription): () => void;
 }
 
-const POLL_MS = 1000;
+const POLL_MS = 2000;
+
+/**
+ * Queries one stream may make before it retires itself.
+ *
+ * The binding constraint is CPU, not subrequests. The free plan allows 50
+ * external subrequests but only 10 ms of CPU per invocation, and a stream
+ * accumulates CPU for as long as it lives — measured at roughly 1.4 ms per poll,
+ * mostly parsing the database's HTTP response. A stream that polled for a minute
+ * measured 56 ms, five times over budget.
+ *
+ * So streams are short and reconnect often. `Last-Event-ID` already existed to
+ * survive a dropped connection, and it is what makes that invisible: the browser
+ * resumes where it left off, and each reconnect is a fresh invocation with a
+ * fresh budget.
+ *
+ * Measured on the deployed Worker: 39 queries cost 56 ms, five cost 11, three
+ * cost 11 as well. So roughly 1.2 ms per query on top of a fixed ~10 ms just to
+ * invoke the Worker — which means no budget gets a stream under the free plan's
+ * 10 ms, and shrinking it past a handful only multiplies reconnects for nothing.
+ *
+ * Twelve is chosen for the screen rather than the limit: about 25 seconds of
+ * stream, roughly 20 ms of CPU, and few enough reconnects that the page stays
+ * calm. Getting genuinely under 10 ms is not a tuning problem, it is the paid
+ * plan.
+ */
+const QUERY_BUDGET = 12;
 
 /**
  * How far back each poll reaches beyond the highest sequence already delivered.
@@ -56,12 +87,13 @@ export function createPollingBus(pollMs = POLL_MS): EventBus {
 			// Intentionally empty. See the note on the interface.
 		},
 
-		subscribe({ eventId, fromSeq, onMessage }) {
+		subscribe({ eventId, fromSeq, onMessage, onBudgetSpent }) {
 			let highestSeq = fromSeq;
 			let version: string | null = null;
 			let running = false;
 			let stopped = false;
 			let ticks = 0;
+			let queries = 0;
 			const delivered = new Set<number>();
 
 			const stop = () => {
@@ -72,8 +104,17 @@ export function createPollingBus(pollMs = POLL_MS): EventBus {
 			const tick = async () => {
 				// Skip rather than queue: a slow query must not stack up polls.
 				if (stopped || running) return;
+
+				// Two, because a version check may follow.
+				if (queries + 2 > QUERY_BUDGET) {
+					stop();
+					onBudgetSpent();
+					return;
+				}
+
 				running = true;
 				try {
+					queries++;
 					const rows = await getEventEntries(eventId, Math.max(0, highestSeq - SEQ_OVERLAP));
 					for (const row of rows) {
 						if (delivered.has(row.seq)) continue;
@@ -91,6 +132,7 @@ export function createPollingBus(pollMs = POLL_MS): EventBus {
 					}
 
 					if (ticks++ % VERSION_EVERY_N_TICKS === 0) {
+						queries++;
 						const next = await getEventVersion(eventId);
 						if (version !== null && next !== version) {
 							if (!onMessage({ type: 'state' })) return stop();

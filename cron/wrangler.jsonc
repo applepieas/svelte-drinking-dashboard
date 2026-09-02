@@ -1,0 +1,20 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "na-ex-cron",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-08-31",
+	"observability": { "enabled": true },
+	"triggers": {
+		// Every two minutes. The demo plans its timeline per minute and each run
+		// replays a five-minute window, so a missed tick leaves no gap.
+		"crons": ["*/2 * * * *"]
+	},
+	// Cloudflare blocks a plain fetch() between Workers on one account (error
+	// 1042). The binding is the supported route, and it stays inside their
+	// network rather than going out and back.
+	"services": [{ "binding": "APP", "service": "svelte-drinking-dashboard" }],
+	"vars": {
+		// Overwritten at deploy time; the secret is set with `wrangler secret put`.
+		"MAINTENANCE_URL": "https://example.workers.dev/api/udrzba"
+	}
+}
