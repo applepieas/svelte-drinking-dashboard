@@ -41,6 +41,31 @@
 	const labelFor = (key: string | null) => labels[key as DrinkKey] ?? '?';
 	const softOn = $derived(data.event.drinks.some((drink) => drink.key === 'soft'));
 
+	/**
+	 * The invitation fills the screen once, while people are still arriving, and
+	 * then folds into a tab on the edge. Remembered for this tab only, so coming
+	 * back from the vessel view does not throw it over the board again, but a
+	 * fresh evening on the same screen starts with it.
+	 */
+	const INTRO = $derived(`na-ex-pozvanka-${data.event.code}`);
+	let introSeen = $state(false);
+
+	$effect(() => {
+		try {
+			introSeen = sessionStorage.getItem(INTRO) === '1';
+		} catch {
+			// Blocked storage just means the invitation shows again.
+		}
+	});
+
+	function rememberIntro() {
+		try {
+			sessionStorage.setItem(INTRO, introSeen ? '1' : '0');
+		} catch {
+			// Not remembering it is harmless.
+		}
+	}
+
 	// The mat grid puts the leader on a double tile, which only reads as a
 	// podium once there are a few people to stand above.
 	const podium = $derived(view.leaderboard.length >= 4);
@@ -193,43 +218,30 @@
 					</ol>
 				</div>
 
-				<div class="lower">
-					{#if !data.event.closedAt}
-						<aside class="joinmat">
-							<img
-								class="qr"
-								src={resolve('/a/[kod]/qr', { kod: data.event.code })}
-								alt="QR kód pro připojení k akci {data.event.code}"
-							/>
-							<p class="lbl">Přidej se</p>
-						</aside>
-					{/if}
-
-					<div class="rest">
-						{#if view.leaderboard.length > tiers.top}
-							<div class="shell" bind:clientHeight={shellHeight}>
-								<ol
-									class="smalls"
-									role="list"
-									aria-label="Dál v pořadí"
-									style="--cols: {density.columns}; --scale: {density.scale}"
-								>
-									{#each smallRows as row, i (row.nick)}
-										<li class="small" bind:clientHeight={cardHeight}>
-											<span class="place">{tiers.top + i + 1}</span>
-											<span class="sname">{row.nick}</span>
-											<span class="sml">{row.ethanolMl} ml</span>
-										</li>
-									{/each}
-								</ol>
-							</div>
-						{/if}
-
-						{#if tiers.rest > 0}
-							<p class="more">{others(tiers.rest)}</p>
-						{/if}
+				{#if view.leaderboard.length > tiers.top}
+					<div class="shell" bind:clientHeight={shellHeight}>
+						<ol
+							class="smalls"
+							role="list"
+							aria-label="Dál v pořadí"
+							style="--cols: {density.columns}; --scale: {density.scale}"
+						>
+							{#each smallRows as row, i (row.nick)}
+								<!-- offsetHeight, not clientHeight: the border is part of the row
+								     too, and leaving it out clipped the last row on a full board. -->
+								<li class="small" bind:offsetHeight={cardHeight}>
+									<span class="place">{tiers.top + i + 1}</span>
+									<span class="sname">{row.nick}</span>
+									<span class="sml">{row.ethanolMl} ml</span>
+								</li>
+							{/each}
+						</ol>
 					</div>
-				</div>
+				{/if}
+
+				{#if tiers.rest > 0}
+					<p class="more">{others(tiers.rest)}</p>
+				{/if}
 			</div>
 
 			<div class="side">
@@ -295,6 +307,43 @@
 				{/each}
 			</footer>
 		{/if}
+	{/if}
+
+	{#if view.leaderboard.length > 0 && !data.event.closedAt}
+		<!-- A plain checkbox rather than component state, so the invitation can be
+		     put away without JavaScript too. The script only remembers it. -->
+		<input
+			id="dal"
+			class="seen"
+			type="checkbox"
+			bind:checked={introSeen}
+			onchange={rememberIntro}
+		/>
+		<section class="intro" aria-label="Pozvánka">
+			<img
+				class="qr"
+				src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+				alt="QR kód pro připojení k akci {data.event.code}"
+			/>
+			<div class="startwords">
+				<p class="lbl">Přidej se</p>
+				<p class="code-huge">{data.event.code}</p>
+				<p class="lbl">{data.joinUrl.split('/a/')[0].replace(/^https?:\/\//, '')}</p>
+				<label class="go" for="dal">Pokračovat na tabuli ⟶</label>
+			</div>
+		</section>
+
+		<aside class="qrtab">
+			<div class="panel">
+				<img
+					class="qr"
+					src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+					alt="QR kód pro připojení k akci {data.event.code}"
+				/>
+				<p class="lbl">kód {data.event.code}</p>
+			</div>
+			<button type="button" class="handle">Přidej se</button>
+		</aside>
 	{/if}
 
 	{#if data.isHost}
@@ -437,7 +486,6 @@
 	}
 
 	.mat,
-	.joinmat,
 	.tile {
 		border: 4px solid var(--ink);
 		background: var(--paper);
@@ -513,48 +561,6 @@
 
 	.mat.lead :global(.tally) {
 		--rows: 2;
-	}
-
-	/* Everything under the medals: the invitation in the bottom-left corner and
-	   the rest of the ranking beside it, so neither leaves a hole in the other. */
-	.lower {
-		flex: 1;
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		gap: clamp(9px, 1vw, 14px);
-		min-height: 0;
-	}
-
-	.rest {
-		display: flex;
-		flex-direction: column;
-		gap: clamp(8px, 1vw, 14px);
-		min-height: 0;
-	}
-
-	/* Square, and big enough to scan from a few steps away: it is the one thing
-	   on the board somebody walks up to on purpose. */
-	.joinmat {
-		align-self: end;
-		width: clamp(150px, 13vw, 230px);
-		aspect-ratio: 1;
-		background: var(--ink);
-		color: var(--paper);
-		padding: clamp(9px, 0.9vw, 14px);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: clamp(5px, 0.6vw, 9px);
-	}
-
-	.joinmat .qr {
-		width: 100%;
-		min-height: 0;
-		flex: 1;
-		object-fit: contain;
-		background: #fff;
-		padding: 6px;
 	}
 
 	.lbl {
@@ -874,6 +880,128 @@
 		flex-direction: column;
 	}
 
+	/* The board's opening screen once people have started drinking: the same
+	   invitation as the empty board, laid over everything until somebody waves
+	   it away. */
+	.seen {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.intro {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: clamp(20px, 3vw, 48px);
+		background: var(--ink);
+		color: var(--paper);
+		padding: clamp(16px, 3vw, 40px);
+	}
+
+	.board:has(.seen:checked) .intro {
+		display: none;
+	}
+
+	.intro .qr {
+		width: min(42vw, 62vh);
+		height: auto;
+		background: #fff;
+		padding: 10px;
+	}
+
+	.go {
+		align-self: flex-start;
+		margin-top: clamp(14px, 2vw, 28px);
+		border: 4px solid var(--paper);
+		background: var(--amber);
+		color: var(--ink);
+		padding: 10px 18px;
+		font-weight: 700;
+		font-size: clamp(14px, 1.2vw, 18px);
+		cursor: pointer;
+		box-shadow: 6px 6px 0 rgb(255 248 232 / 0.18);
+	}
+
+	.seen:focus-visible ~ .intro .go {
+		outline: 3px solid var(--amber);
+		outline-offset: 4px;
+	}
+
+	/* Afterwards the invitation is a tab on the left edge, in the board's own
+	   margin, so it costs the layout nothing. Pointing at it slides the code out
+	   over whatever is next to it, which is fine for the few seconds it takes to
+	   scan. */
+	.qrtab {
+		/* A little narrower than the board's padding, so it never touches a card. */
+		--tab: calc(clamp(14px, 2.2vw, 30px) - 5px);
+		position: fixed;
+		left: 0;
+		bottom: clamp(70px, 12vh, 140px);
+		z-index: 30;
+		display: flex;
+		align-items: flex-end;
+		transform: translateX(calc(-100% + var(--tab)));
+		transition: transform 0.22s ease-out;
+	}
+
+	.qrtab:hover,
+	.qrtab:focus-within {
+		transform: none;
+	}
+
+	.panel {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		background: var(--ink);
+		padding: 14px;
+		box-shadow: 6px 6px 0 rgb(21 18 12 / 0.18);
+	}
+
+	.panel .qr {
+		width: clamp(200px, 18vw, 300px);
+		height: auto;
+		background: #fff;
+		padding: 8px;
+	}
+
+	.handle {
+		width: var(--tab);
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		border: 0;
+		background: var(--amber);
+		color: var(--ink);
+		font: inherit;
+		font-size: clamp(9px, 0.75vw, 12px);
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		padding: 14px 0;
+		cursor: pointer;
+		box-shadow: -4px -4px 0 rgb(21 18 12 / 0.18);
+	}
+
+	@media (max-width: 640px) {
+		.intro {
+			flex-direction: column;
+			text-align: center;
+		}
+
+		.intro .qr {
+			width: min(78vw, 46vh);
+		}
+
+		.go {
+			align-self: center;
+		}
+	}
+
 	.empty .qr {
 		width: clamp(120px, 16vw, 220px);
 		height: auto;
@@ -882,11 +1010,14 @@
 		padding: 6px;
 	}
 
+	/* Copied letter by letter into a phone, so it follows the rule for anything
+	   read and retyped: the mono face. In the pixel one a 5 reads as an S. */
 	.code-huge {
 		margin: 4px 0;
-		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
+		font-weight: 600;
 		font-size: clamp(40px, 6vw, 92px);
-		letter-spacing: 0.08em;
+		letter-spacing: 0.04em;
 		line-height: 1;
 	}
 
@@ -924,15 +1055,6 @@
 		.mat.lead {
 			grid-row: auto;
 			grid-column: span 2;
-		}
-
-		.lower {
-			grid-template-columns: minmax(0, 1fr);
-		}
-
-		.joinmat {
-			order: 2;
-			justify-self: center;
 		}
 	}
 </style>

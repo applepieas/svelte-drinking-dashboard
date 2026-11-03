@@ -64,6 +64,12 @@ test('the leaderboard ranks by ethanol rather than by number of drinks', async (
 	const rows = page.getByRole('list', { name: 'Žebříček' }).getByRole('listitem');
 	await expect(rows.first()).toContainText('panakar');
 	await expect(rows.nth(1)).toContainText('nealkoholik');
+
+	// The invitation covers the board until it is put away, JavaScript or not.
+	const invitation = page.getByRole('region', { name: 'Pozvánka' });
+	await expect(invitation).toBeVisible();
+	await page.getByText('Pokračovat na tabuli').click();
+	await expect(invitation).toBeHidden();
 });
 
 test('a taken nick is refused', async ({ page }) => {
