@@ -1,14 +1,14 @@
 <script lang="ts">
 	import Tally from '$lib/art/Tally.svelte';
-	import { DRINKS, type DrinkKey } from '$lib/drinks';
+	import { DRINKS, OFF_BY_DEFAULT, type DrinkKey } from '$lib/drinks';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
 
 	let { form }: PageProps = $props();
 
-	// Fresh form starts with everything ticked; after an error keep what the user chose.
+	// Fresh form starts with the usual drinks ticked; after an error keep what the user chose.
 	function isChecked(key: DrinkKey): boolean {
-		return form ? (form.keys?.includes(key) ?? false) : true;
+		return form ? (form.keys?.includes(key) ?? false) : !OFF_BY_DEFAULT.includes(key);
 	}
 
 	const labels = Object.fromEntries(

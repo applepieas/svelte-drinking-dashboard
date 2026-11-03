@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import type { DrinkKey } from '$lib/drinks';
 	import HostViewToggle from '$lib/components/HostViewToggle.svelte';
@@ -38,6 +39,7 @@
 	);
 
 	const labelFor = (key: string | null) => labels[key as DrinkKey] ?? '?';
+	const softOn = $derived(data.event.drinks.some((drink) => drink.key === 'soft'));
 
 	// The mat grid puts the leader on a double tile, which only reads as a
 	// podium once there are a few people to stand above.
@@ -189,7 +191,9 @@
 							</li>
 						{/each}
 					</ol>
+				</div>
 
+				<div class="lower">
 					{#if !data.event.closedAt}
 						<aside class="joinmat">
 							<img
@@ -200,30 +204,32 @@
 							<p class="lbl">Přidej se</p>
 						</aside>
 					{/if}
-				</div>
 
-				{#if view.leaderboard.length > tiers.top}
-					<div class="shell" bind:clientHeight={shellHeight}>
-						<ol
-							class="smalls"
-							role="list"
-							aria-label="Dál v pořadí"
-							style="--cols: {density.columns}; --scale: {density.scale}"
-						>
-							{#each smallRows as row, i (row.nick)}
-								<li class="small" bind:clientHeight={cardHeight}>
-									<span class="place">{tiers.top + i + 1}</span>
-									<span class="sname">{row.nick}</span>
-									<span class="sml">{row.ethanolMl} ml</span>
-								</li>
-							{/each}
-						</ol>
+					<div class="rest">
+						{#if view.leaderboard.length > tiers.top}
+							<div class="shell" bind:clientHeight={shellHeight}>
+								<ol
+									class="smalls"
+									role="list"
+									aria-label="Dál v pořadí"
+									style="--cols: {density.columns}; --scale: {density.scale}"
+								>
+									{#each smallRows as row, i (row.nick)}
+										<li class="small" bind:clientHeight={cardHeight}>
+											<span class="place">{tiers.top + i + 1}</span>
+											<span class="sname">{row.nick}</span>
+											<span class="sml">{row.ethanolMl} ml</span>
+										</li>
+									{/each}
+								</ol>
+							</div>
+						{/if}
+
+						{#if tiers.rest > 0}
+							<p class="more">{others(tiers.rest)}</p>
+						{/if}
 					</div>
-				{/if}
-
-				{#if tiers.rest > 0}
-					<p class="more">{others(tiers.rest)}</p>
-				{/if}
+				</div>
 			</div>
 
 			<div class="side">
@@ -309,6 +315,19 @@
 			/>
 			<p><b>{density.label}</b> &middot; {tiers.small} lidí pod medailemi</p>
 			<p class="dim">Zavře se klávesou V. Platí pro tuhle obrazovku.</p>
+
+			<!-- Unlike the size, this belongs to the party: it changes what every
+			     phone offers, so it is the host's to flip and it is saved on the event. -->
+			{#if data.isHost}
+				<form method="POST" action="?/napoj" class="switch" use:enhance>
+					<input type="hidden" name="drink" value="soft" />
+					<input type="hidden" name="on" value={softOn ? '0' : '1'} />
+					<span>Nealko ve hře: <b>{softOn ? 'ano' : 'ne'}</b></span>
+					<button>{softOn ? 'Vypnout' : 'Zapnout'}</button>
+				</form>
+			{:else}
+				<p class="dim">Nealko zapne hostitel ve Správě akce.</p>
+			{/if}
 		</aside>
 	{/if}
 </main>
@@ -496,22 +515,46 @@
 		--rows: 2;
 	}
 
+	/* Everything under the medals: the invitation in the bottom-left corner and
+	   the rest of the ranking beside it, so neither leaves a hole in the other. */
+	.lower {
+		flex: 1;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: clamp(9px, 1vw, 14px);
+		min-height: 0;
+	}
+
+	.rest {
+		display: flex;
+		flex-direction: column;
+		gap: clamp(8px, 1vw, 14px);
+		min-height: 0;
+	}
+
+	/* Square, and big enough to scan from a few steps away: it is the one thing
+	   on the board somebody walks up to on purpose. */
 	.joinmat {
+		align-self: end;
+		width: clamp(150px, 13vw, 230px);
+		aspect-ratio: 1;
 		background: var(--ink);
 		color: var(--paper);
-		padding: clamp(7px, 0.7vw, 11px);
+		padding: clamp(9px, 0.9vw, 14px);
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: clamp(8px, 1vw, 14px);
+		gap: clamp(5px, 0.6vw, 9px);
 	}
 
 	.joinmat .qr {
-		width: clamp(62px, 6vw, 96px);
-		height: auto;
-		flex: none;
+		width: 100%;
+		min-height: 0;
+		flex: 1;
+		object-fit: contain;
 		background: #fff;
-		padding: 5px;
+		padding: 6px;
 	}
 
 	.lbl {
@@ -624,6 +667,26 @@
 		color: var(--quiet);
 		font-size: 11.5px;
 		line-height: 1.5;
+	}
+
+	.switch {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		margin-top: 4px;
+		padding-top: 10px;
+		border-top: 2px dashed rgb(21 18 12 / 0.22);
+	}
+
+	.switch button {
+		font: inherit;
+		font-weight: 600;
+		border: 3px solid var(--ink);
+		background: var(--amber);
+		color: var(--ink);
+		padding: 4px 10px;
+		cursor: pointer;
 	}
 
 	/* The column beside the board keeps to the window too, or its last tile
@@ -863,8 +926,13 @@
 			grid-column: span 2;
 		}
 
+		.lower {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
 		.joinmat {
-			grid-column: span 2;
+			order: 2;
+			justify-self: center;
 		}
 	}
 </style>

@@ -77,7 +77,9 @@ export function liveDrinks(entries: LogEntry[]): LogEntry[] {
  */
 export function reduceLog(entries: LogEntry[], drinks: DrinkDef[], recentLimit = 10): EventView {
 	const ethanol = ethanolByKey(drinks);
-	const live = liveDrinks(entries);
+	// A drink the event has stopped offering stops counting. Its rows stay in
+	// the log, so switching it back on brings them back exactly as they were.
+	const live = liveDrinks(entries).filter((item) => item.drinkKey && ethanol.has(item.drinkKey));
 
 	const totals = new Map<string, LeaderboardRow>();
 	for (const item of live) {

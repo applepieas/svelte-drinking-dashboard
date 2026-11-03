@@ -1,34 +1,9 @@
-import { error, fail, redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad, RouteParams } from './$types';
+import { fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { normalizeCode } from '$lib/server/codes';
 import { closeEvent, deleteEvent, kickParticipant, reopenEvent } from '$lib/server/commands';
-import { getEventByCode, listParticipants } from '$lib/server/queries';
-import { hashToken } from '$lib/server/tokens';
-
-/**
- * The management page is the only place that needs the host token, so the check
- * lives here rather than in the layout. 403 rather than 404: the event page is
- * public anyway, so pretending it does not exist would only confuse the host.
- */
-async function requireHost({
-	params,
-	cookies
-}: {
-	params: RouteParams;
-	cookies: { get(name: string): string | undefined };
-}) {
-	const code = normalizeCode(params.kod);
-	if (!code) error(404, 'Akce nenalezena');
-
-	const row = await getEventByCode(code);
-	if (!row) error(404, 'Akce nenalezena');
-
-	const token = cookies.get(`host_${code}`);
-	const isHost = token ? row.hostTokenHash === (await hashToken(token)) : false;
-	if (!isHost) error(403, 'Tuhle akci spravovat nemůžeš.');
-
-	return { code, event: row };
-}
+import { requireHost, switchDrink } from '$lib/server/host';
+import { listParticipants } from '$lib/server/queries';
 
 export const load: PageServerLoad = async (loadEvent) => {
 	const { event } = await requireHost(loadEvent);
@@ -47,6 +22,8 @@ export const actions: Actions = {
 		await reopenEvent(event.id);
 		redirect(303, `/a/${code}/sprava`);
 	},
+
+	napoj: (requestEvent) => switchDrink(requestEvent, (code) => `/a/${code}/sprava`),
 
 	vykopnout: async (requestEvent) => {
 		const { code, event } = await requireHost(requestEvent);

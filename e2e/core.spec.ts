@@ -43,6 +43,11 @@ test('a guest joins, logs a drink and takes it back', async ({ page }) => {
 test('the leaderboard ranks by ethanol rather than by number of drinks', async ({ page }) => {
 	const code = await createEvent(page, 'ethanol');
 
+	// A new event leaves the alcohol-free drink out until the host asks for it.
+	await page.goto(`/a/${code}/sprava`);
+	await page.getByRole('button', { name: 'Zapnout nealko' }).click();
+	await expect(page.getByText('Nealko je ve hře.')).toBeVisible();
+
 	await join(page, code, 'nealkoholik');
 	for (let i = 0; i < 3; i++) {
 		await page.getByRole('button', { name: /^Nealko/ }).click();

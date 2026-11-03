@@ -34,3 +34,25 @@ export const DRINKS: Record<DrinkKey, DrinkDef> = {
 };
 
 export const isDrinkKey = (v: unknown): v is DrinkKey => typeof v === 'string' && v in DRINKS;
+
+/**
+ * Left unticked on a new event. A drinks board where the water counts as a
+ * round reads as padding, so the host has to ask for it - on the board's hidden
+ * dial or on the management page.
+ */
+export const OFF_BY_DEFAULT: DrinkKey[] = ['soft'];
+
+/**
+ * An event's drinks with one switched on or off.
+ *
+ * The drinks that stay keep the event's own snapshot, so switching something
+ * else does not quietly move them to today's definitions. One that comes back
+ * takes today's, because there is no other to take. Order follows `DRINKS`, so
+ * the phone's buttons do not shuffle every time.
+ */
+export function withDrink(current: DrinkDef[], key: DrinkKey, on: boolean): DrinkDef[] {
+	const kept = new Map(current.map((drink) => [drink.key, drink]));
+	if (on && !kept.has(key)) kept.set(key, DRINKS[key]);
+	if (!on) kept.delete(key);
+	return (Object.keys(DRINKS) as DrinkKey[]).flatMap((k) => kept.get(k) ?? []);
+}

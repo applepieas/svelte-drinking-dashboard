@@ -6,6 +6,7 @@
 
 	const active = $derived(data.participants.filter((p) => !p.kickedAt));
 	const kicked = $derived(data.participants.filter((p) => p.kickedAt));
+	const softOn = $derived(data.event.drinks.some((drink) => drink.key === 'soft'));
 </script>
 
 <main class="page">
@@ -65,10 +66,27 @@
 	</section>
 
 	<section class="card sect">
+		<h2>Nealko</h2>
+		{#if softOn}
+			<p class="line">Nealko je ve hře. Na telefonech má vlastní tlačítko a počítá se do nápojů.</p>
+		{:else}
+			<p class="line muted">
+				Nealko ve hře není. Když ho zapneš, objeví se na telefonech po dalším načtení.
+			</p>
+		{/if}
+		<form method="POST" action="?/napoj">
+			<input type="hidden" name="drink" value="soft" />
+			<input type="hidden" name="on" value={softOn ? '0' : '1'} />
+			<button class="btn">{softOn ? 'Vypnout nealko' : 'Zapnout nealko'}</button>
+		</form>
+	</section>
+
+	<section class="card sect">
 		<h2>Obrazovka</h2>
 		<p class="muted line">
 			Velikost kartiček na společné obrazovce přepneš klávesou <b>V</b> přímo na ní. Nastavení si pamatuje
-			ten počítač, na kterém tabuli máš puštěnou.
+			ten počítač, na kterém tabuli máš puštěnou. Je tam i vypínač nealka, ale jen v prohlížeči, ve kterém
+			byla akce založená.
 		</p>
 	</section>
 

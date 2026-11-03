@@ -98,9 +98,10 @@ describe('reduceLog', () => {
 		expect(view.totalEthanolMl).toBe(16);
 	});
 
-	it('scores a drink the event does not define as zero rather than crashing', () => {
-		const view = reduceLog([drink('petr', 'beer')], [DRINKS[2]]);
-		expect(view.leaderboard[0]).toMatchObject({ ethanolMl: 0, drinks: 1 });
+	it('leaves out a drink the event no longer offers, without crashing', () => {
+		const view = reduceLog([drink('petr', 'beer'), drink('petr', 'soft')], [DRINKS[2]]);
+		expect(view.leaderboard[0]).toMatchObject({ ethanolMl: 0, drinks: 1, mix: ['soft'] });
+		expect(view.recent.map((item) => item.drinkKey)).toEqual(['soft']);
 	});
 
 	it('lists recent entries newest first and honours the limit', () => {
