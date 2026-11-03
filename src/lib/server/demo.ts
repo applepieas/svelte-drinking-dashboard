@@ -1,4 +1,4 @@
-import { eq, lt } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { DRINKS } from '$lib/drinks';
 import {
 	DEMO_BACKFILL_MINUTES,
@@ -98,9 +98,9 @@ async function replay(eventId: string, fromMinute: number, toMinute: number): Pr
 /**
  * Keeps the public demo alive and the database tidy.
  *
- * Called on a schedule rather than on page load: writing rows as a side effect
- * of somebody looking at a page is the kind of thing that is fine until two
- * people look at once.
+ * Unconditional: it does the work every time it is called. Page loads go
+ * through {@link maintainIfDue}, which decides whether there is work to do;
+ * this is what the maintenance endpoint runs when asked directly.
  */
 export async function runMaintenance(now = new Date()): Promise<MaintenanceReport> {
 	const deletedEvents = await pruneExpiredEvents(now);
@@ -129,9 +129,64 @@ export async function runMaintenance(now = new Date()): Promise<MaintenanceRepor
 		.set({ expiresAt: new Date(now.getTime() + DEMO_EXPIRY_MS) })
 		.where(eq(event.id, existing.id));
 
-	// A small overlap covers a missed run without leaving a gap in the timeline.
-	const added = await replay(existing.id, nowMinute - 5, nowMinute);
+	// A tick refills the party from its first minute, not just the last few.
+	// Nothing runs on a timer any more, so the previous tick could have been
+	// five minutes or five hours ago, and a narrow window would leave the quiet
+	// stretch standing as a hole in the timeline for everyone who looks later.
+	// Rows carry a stable `submissionId` behind a unique index, so re-offering
+	// the ones already written settles in the index and changes nothing.
+	const start = minuteIndex(existing.createdAt) - DEMO_BACKFILL_MINUTES;
+	const added = await replay(existing.id, start, nowMinute);
 	return { demo: added > 0 ? 'ticked' : 'quiet', added, deletedEvents };
+}
+
+/**
+ * How long the demo may sit untouched before the next viewer makes it tick.
+ *
+ * It is also the throttle: a busier demo does not run maintenance more often,
+ * it runs it on this cadence no matter how many people are watching.
+ */
+const LAZY_TICK_MS = 2 * 60_000;
+
+/**
+ * Advances the demo when somebody looks at it, rather than on a timer.
+ *
+ * A cron every couple of minutes meant the database never got to sleep, which
+ * on a serverless plan is billed as running all month. Nobody needs the demo to
+ * move while nobody is watching it, so the viewer brings it up to date instead.
+ *
+ * Two people opening the page together must not both do the work. The test and
+ * the claim are a single UPDATE: it only matches a row whose expiry has not
+ * already been pushed forward, so the second caller changes no rows and backs
+ * out. Rows are written with a stable `submissionId` behind a unique index, so
+ * even a lost race would collapse rather than duplicate.
+ *
+ * Returns null when there was nothing to do.
+ */
+export async function maintainIfDue(now = new Date()): Promise<MaintenanceReport | null> {
+	const existing = await db.query.event.findFirst({
+		where: eq(event.code, DEMO_CODE),
+		columns: { id: true }
+	});
+
+	// No demo at all: the first viewer after a reset pays for seeding it, and
+	// has to wait for it, because there is nothing to show until it exists.
+	if (!existing) return runMaintenance(now);
+
+	const claimed = await db
+		.update(event)
+		.set({ expiresAt: new Date(now.getTime() + DEMO_EXPIRY_MS) })
+		.where(
+			and(
+				eq(event.id, existing.id),
+				lt(event.expiresAt, new Date(now.getTime() + DEMO_EXPIRY_MS - LAZY_TICK_MS))
+			)
+		)
+		.returning({ id: event.id });
+
+	if (claimed.length === 0) return null;
+
+	return runMaintenance(now);
 }
 
 /** Used by the /demo route to decide whether there is anything to redirect to. */

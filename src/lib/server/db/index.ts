@@ -1,10 +1,11 @@
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
-import * as schema from './schema';
+import { building } from '$app/environment';
 import { env } from '$env/dynamic/private';
+import { buildTimeOnly, connect, type Database } from './connect';
 
-if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+/** Connects on import, except during the build - see `buildTimeOnly`. */
+export const db: Database = building ? buildTimeOnly() : await open();
 
-const client = neon(env.DATABASE_URL);
-
-export const db = drizzle(client, { schema });
+async function open(): Promise<Database> {
+	if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+	return connect(env.DATABASE_URL);
+}

@@ -4,7 +4,7 @@ A real-time drinks board for a party. People log what they drink from their
 phones by scanning a QR code; a shared screen - a TV, a laptop, a projector -
 shows the standings as it happens.
 
-**[Live demo](https://svelte-drinking-dashboard.svelte-drinking-dashboard.workers.dev/demo)** - fictional data, refreshed on a schedule.
+**[Live demo](https://svelte-drinking-dashboard.svelte-drinking-dashboard.workers.dev/demo)** - fictional data; it moves while somebody is watching.
 
 ![The shared screen](docs/screen.png)
 
@@ -17,22 +17,25 @@ A SvelteKit rebuild of a Next.js app that real people used at several events.
 
 Everything here fits inside the free tier of both services.
 
-**1. A database.** Create a project on [Neon](https://neon.tech) and copy the
-connection string.
+**1. A database.** Any PostgreSQL will do while you are working on it - the
+deployed app runs on [Neon](https://neon.tech), and an address that is not
+Neon's switches the driver to the ordinary wire protocol.
 
 ```sh
 git clone https://github.com/applepieas/svelte-drinking-dashboard
 cd svelte-drinking-dashboard
 pnpm install
-cp .env.example .env          # put your connection string in DATABASE_URL
+cp .env.example .env          # DATABASE_URL, local or Neon
+createdb naex                 # if you went local
 pnpm db:migrate
 ```
 
-**2. Try it locally.** `pnpm dev`, open the address it prints, create an event,
-and scan the QR code with a phone on the same network.
+**2. Try it locally.** `pnpm dev --host`, open the address it prints, create an
+event, and scan the QR code with a phone on the same network. `--host` matters:
+the QR code points at whatever address you opened, so a phone needs the one on
+your network rather than `localhost`.
 
-**3. Put it online.** Two Workers: the app, and a small one that owns the
-schedule.
+**3. Put it online.** One Worker.
 
 ```sh
 pnpm wrangler login
@@ -41,15 +44,14 @@ pnpm wrangler secret put DATABASE_URL         # the same connection string
 pnpm wrangler secret put MAINTENANCE_SECRET   # openssl rand -hex 32
 pnpm wrangler secret put RATE_LIMIT_SALT      # openssl rand -hex 32
 pnpm build && pnpm wrangler deploy            # prints your URL
-
-pnpm wrangler secret put MAINTENANCE_SECRET -c cron/wrangler.jsonc   # same value
-pnpm wrangler deploy -c cron/wrangler.jsonc \
-  --var MAINTENANCE_URL:https://<your-url>/api/udrzba
 ```
 
-The scheduler runs every two minutes: it seeds the demo, keeps it moving, and
-deletes events once their 30 days are up. Rename the Workers in
-`wrangler.jsonc` and `cron/wrangler.jsonc` first if you like.
+Rename the Worker in `wrangler.jsonc` first if you like. Housekeeping - seeding
+the demo, moving it along, deleting events once their 30 days are up - rides on
+the demo's own page loads, at most once every two minutes and after the response
+has already gone out. There is no cron trigger; [Fitting the free
+plan](#fitting-the-free-plan) says why. The same job sits at `POST /api/udrzba`
+behind `MAINTENANCE_SECRET` if you want to run it by hand.
 
 ## How it works
 
@@ -84,7 +86,7 @@ elimination stops at sober instead of running up a debt.
 
 **The demo is generated, never recorded.** Its timeline is a pure function of
 the clock, so a given minute always produces the same drink by the same invented
-person - which is what lets two overlapping scheduler runs collapse into one row.
+person - which is what lets two overlapping maintenance runs collapse into one row.
 
 ## Fitting the free plan
 
@@ -108,6 +110,20 @@ terminated in practice, but this is the ceiling the design sits under.
 The QR code is served from its own endpoint with an immutable cache rather than
 rendered into the page, because encoding one was the most expensive thing the
 screen did and it never changes for a given code.
+
+Development does not spend any of that, which is the other reason the driver
+follows the address: a local PostgreSQL costs nothing to leave running, and the
+free plan's compute hours are better spent on people actually looking at the
+demo. The branch is behind `dev`, so the Worker never carries the local driver.
+
+The database has a budget too, and it is the one that bites. Neon's free plan
+allows about 190 compute-hours a month and suspends an idle compute after five
+minutes. The demo used to be driven by a cron trigger every two minutes, which
+means the compute never got to idle: 24/7 is ~720 compute-hours, and the month's
+allowance was gone in about eight days. Maintenance now runs on the demo's own
+page loads instead, throttled by a conditional `UPDATE` on the event's
+`expires_at` so that simultaneous viewers produce one tick between them. Nobody
+watching, nothing running, and the database sleeps.
 
 ## Tests
 
