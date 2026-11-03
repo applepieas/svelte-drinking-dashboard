@@ -64,6 +64,14 @@
 		{/if}
 	</section>
 
+	<section class="card sect">
+		<h2>Obrazovka</h2>
+		<p class="muted line">
+			Velikost kartiček na společné obrazovce přepneš klávesou <b>V</b> přímo na ní. Nastavení si pamatuje
+			ten počítač, na kterém tabuli máš puštěnou.
+		</p>
+	</section>
+
 	<section class="card sect danger">
 		<h2>Smazat akci</h2>
 		<p class="muted line">
@@ -118,6 +126,12 @@
 
 	.sect h2 {
 		margin: 0;
+	}
+
+	.line b {
+		font-family: var(--pixel);
+		font-size: 1.15em;
+		color: var(--ink);
 	}
 
 	.line {

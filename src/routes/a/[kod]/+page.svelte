@@ -80,8 +80,23 @@
 	// Hidden on purpose: the board spends the evening on a wall, where a visible
 	// control is clutter that anybody walking past can lean on.
 	$effect(() => {
+		/**
+		 * Only a field somebody is typing into may swallow the key. Insisting the
+		 * body had focus meant that clicking any link on the board - or the dial's
+		 * own slider - quietly switched the shortcut off, which is indistinguishable
+		 * from it not existing.
+		 */
+		const typing = (target: EventTarget | null) => {
+			const node = target as HTMLElement | null;
+			if (!node) return false;
+			if (node.isContentEditable || node.tagName === 'TEXTAREA') return true;
+			if (node.tagName !== 'INPUT') return false;
+			const kind = (node as HTMLInputElement).type;
+			return !['range', 'checkbox', 'radio', 'button', 'submit', 'color'].includes(kind);
+		};
+
 		const onKey = (event: KeyboardEvent) => {
-			if (event.target !== document.body) return;
+			if (typing(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
 			if (event.key === 'v' || event.key === 'V') dialOpen = !dialOpen;
 			if (event.key === 'Escape') dialOpen = false;
 		};
