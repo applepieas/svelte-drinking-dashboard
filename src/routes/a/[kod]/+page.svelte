@@ -40,8 +40,8 @@
 	const hours = $derived(Math.floor(view.elapsedMinutes / 60));
 	const mins = $derived(view.elapsedMinutes % 60);
 
-	/** 1 nápoj, 2 nápoje, 5 nápojů — the shape Czech counting takes. */
-	const drinks = (n: number) => `${n} ${n === 1 ? 'nápoj' : n < 5 ? 'nápoje' : 'nápojů'}`;
+	/** 1 nápoj, 2 nápoje, 0 a 5 nápojů — the shape Czech counting takes. */
+	const drinks = (n: number) => `${n} ${n === 1 ? 'nápoj' : n > 1 && n < 5 ? 'nápoje' : 'nápojů'}`;
 
 	const time = new Intl.DateTimeFormat('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 	const pad = (n: number) => String(n).padStart(2, '0');
@@ -74,17 +74,21 @@
 
 	{#if view.leaderboard.length === 0}
 		<section class="empty">
-			<p>Zatím nikdo nic nezapsal.</p>
-			<p class="join-big">
-				Naskenuj kód, nebo zadej <b>{data.event.code}</b> na {data.joinUrl.split('/a/')[0]}
-			</p>
-			{#if !data.event.closedAt}
-				<img
-					class="qr"
-					src={resolve('/a/[kod]/qr', { kod: data.event.code })}
-					alt="QR kód pro připojení k akci {data.event.code}"
-				/>
-			{/if}
+			<div class="startmat">
+				{#if !data.event.closedAt}
+					<img
+						class="qr"
+						src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+						alt="QR kód pro připojení k akci {data.event.code}"
+					/>
+				{/if}
+				<div class="startwords">
+					<p class="lbl">Přidej se</p>
+					<p class="code-huge">{data.event.code}</p>
+					<p class="lbl">{data.joinUrl.split('/a/')[0].replace(/^https?:\/\//, '')}</p>
+				</div>
+			</div>
+			<p class="waiting">Zatím nikdo nic nezapsal.</p>
 		</section>
 	{:else}
 		<div class="wrap">
@@ -523,30 +527,62 @@
 		color: var(--ink);
 	}
 
+	/* Before anybody has drunk anything the screen has one job: get people in.
+	   So the invitation is the board - the same mat the populated screen keeps
+	   in the corner, grown to fill the room. */
 	.empty {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 16px;
-		text-align: center;
+		gap: clamp(14px, 2vw, 26px);
 	}
 
-	.empty p {
-		margin: 0;
-		font-size: clamp(14px, 1.4vw, 20px);
+	.startmat {
+		display: flex;
+		align-items: center;
+		gap: clamp(16px, 2.4vw, 38px);
+		border: 4px solid var(--ink);
+		background: var(--ink);
+		color: var(--paper);
+		box-shadow: 6px 6px 0 rgb(21 18 12 / 0.18);
+		padding: clamp(16px, 2vw, 30px);
 	}
 
-	.join-big b {
-		font-family: 'Pixelify Sans', ui-monospace, monospace;
-		font-size: 1.5em;
-		letter-spacing: 0.06em;
+	.startwords {
+		display: flex;
+		flex-direction: column;
 	}
 
 	.empty .qr {
-		width: clamp(140px, 18vw, 240px);
+		width: clamp(120px, 16vw, 220px);
 		height: auto;
+		flex: none;
+		background: #fff;
+		padding: 6px;
+	}
+
+	.code-huge {
+		margin: 4px 0;
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(40px, 6vw, 92px);
+		letter-spacing: 0.08em;
+		line-height: 1;
+	}
+
+	.waiting {
+		margin: 0;
+		color: var(--quiet);
+		font-size: clamp(13px, 1.2vw, 18px);
+	}
+
+	/* A phone turns the invitation into a column. */
+	@media (max-width: 640px) {
+		.startmat {
+			flex-direction: column;
+			text-align: center;
+		}
 	}
 
 	.admin {

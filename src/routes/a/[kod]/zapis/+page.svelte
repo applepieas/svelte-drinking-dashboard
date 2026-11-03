@@ -22,6 +22,17 @@
 	let pending = $state<ConsumedDrink[]>([]);
 	let announcement = $state('');
 	let networkError = $state('');
+	/**
+	 * True from a tap until the server has answered it.
+	 *
+	 * Each form carries a submission token the server mints once per page load,
+	 * and a unique index on it means a second tap arriving before the next token
+	 * is treated as a retry of the first - one drink, not two. That is what keeps
+	 * a fumbled double-tap from costing somebody a beer, but on its own it is
+	 * silent: the tap looks accepted and then quietly is not. Closing the buttons
+	 * for the length of the round trip says the same thing out loud.
+	 */
+	let submitting = $state(false);
 
 	/** Ticks so the countdown and the estimate move without a reload. */
 	let now = $state(Date.now());
@@ -58,6 +69,9 @@
 			: 0
 	);
 
+	/** 1 zápis, 2 zápisy, 0 a 5 zápisů — the shape Czech counting takes. */
+	const entries = (n: number) => (n === 1 ? 'zápis' : n > 1 && n < 5 ? 'zápisy' : 'zápisů');
+
 	/** Czech writes 0,42 — not 0.42. */
 	const promile = new Intl.NumberFormat('cs-CZ', {
 		minimumFractionDigits: 2,
@@ -86,6 +100,7 @@
 			announcement = `Zapsáno: ${drink.label}`;
 		}
 		networkError = '';
+		submitting = true;
 
 		return async ({ result, update }) => {
 			if (result.type === 'failure') {
@@ -100,15 +115,18 @@
 			// reset:false keeps the submission token in place if the action failed.
 			await update({ reset: false });
 			pending = [];
+			submitting = false;
 		};
 	};
 
 	const takeBack: SubmitFunction = () => {
 		announcement = 'Poslední zápis vzat zpět.';
 		networkError = '';
+		submitting = true;
 		return async ({ update }) => {
 			await update({ reset: false });
 			pending = [];
+			submitting = false;
 		};
 	};
 
@@ -131,7 +149,7 @@
 		<h1>{data.event.name}</h1>
 		<p class="who">
 			{data.me.nick} &middot; <span class="num">{total}</span>
-			{total === 1 ? 'zápis' : 'zápisů'}
+			{entries(total)}
 		</p>
 	</header>
 
@@ -151,7 +169,13 @@
 	<form method="POST" action="?/zapsat" use:enhance={logDrink} class="pours">
 		<input type="hidden" name="submissionId" value={data.submissionId} />
 		{#each data.event.drinks as drink (drink.key)}
-			<button class="pour" style="--tint: {drink.color}" name="drink" value={drink.key}>
+			<button
+				class="pour"
+				style="--tint: {drink.color}"
+				name="drink"
+				value={drink.key}
+				disabled={submitting}
+			>
 				<span class="pour-name">{drink.label}</span>
 				<span class="pour-vol num">{drink.volumeMl} ml</span>
 				<span class="pour-glass" aria-hidden="true">
@@ -165,7 +189,7 @@
 		<form method="POST" action="?/vzitZpet" use:enhance={takeBack} class="undo">
 			<input type="hidden" name="submissionId" value={data.submissionId} />
 			<input type="hidden" name="seq" value={data.undoable.seq} />
-			<button class="btn undo-btn">
+			<button class="btn undo-btn" disabled={submitting}>
 				Vzít zpět: {undoneLabel ?? 'poslední zápis'}
 				<span class="num undo-left">({undoSecondsLeft} s)</span>
 			</button>
@@ -266,7 +290,7 @@
 
 	.pours {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 12px;
 	}
 
@@ -295,7 +319,16 @@
 			box-shadow 80ms ease-out;
 	}
 
-	.pour:active {
+	.pour:active:not(:disabled) {
+		transform: translate(var(--lift), var(--lift));
+		box-shadow: 0 0 0 rgb(21 18 12 / 0.16);
+	}
+
+	/* Held shut while the last tap is still in the air. Pressed-in rather than
+	   greyed out: the tap landed, it is just not finished. */
+	.pour:disabled,
+	.undo-btn:disabled {
+		cursor: default;
 		transform: translate(var(--lift), var(--lift));
 		box-shadow: 0 0 0 rgb(21 18 12 / 0.16);
 	}

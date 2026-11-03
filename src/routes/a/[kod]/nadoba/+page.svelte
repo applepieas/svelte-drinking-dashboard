@@ -42,8 +42,8 @@
 		maximumFractionDigits: 1
 	});
 
-	/** 1 nápoj, 2 nápoje, 5 nápojů — the shape Czech counting takes. */
-	const drinks = (n: number) => `${n} ${n === 1 ? 'nápoj' : n < 5 ? 'nápoje' : 'nápojů'}`;
+	/** 1 nápoj, 2 nápoje, 0 a 5 nápojů — the shape Czech counting takes. */
+	const drinks = (n: number) => `${n} ${n === 1 ? 'nápoj' : n > 1 && n < 5 ? 'nápoje' : 'nápojů'}`;
 
 	const poured = $derived(view.byDrink.reduce((sum, item) => sum + item.count, 0));
 </script>
