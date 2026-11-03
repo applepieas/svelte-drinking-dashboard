@@ -3,6 +3,14 @@
 	import type { DrinkKey } from '$lib/drinks';
 	import HostViewToggle from '$lib/components/HostViewToggle.svelte';
 	import Tally from '$lib/art/Tally.svelte';
+	import {
+		clampStep,
+		DEFAULT_DENSITY,
+		DENSITIES,
+		others,
+		rowsThatFit,
+		split
+	} from '$lib/art/density';
 	import { reduceLog } from '$lib/leaderboard';
 	import { liveLog } from '$lib/liveLog.svelte';
 	import type { PageProps } from './$types';
@@ -34,6 +42,61 @@
 	// The mat grid puts the leader on a double tile, which only reads as a
 	// podium once there are a few people to stand above.
 	const podium = $derived(view.leaderboard.length >= 4);
+
+	/**
+	 * How tightly the board packs everybody below the top few.
+	 *
+	 * It belongs to the screen rather than to the party: a laptop on the table
+	 * and a television across the room want different answers, and both may be
+	 * showing the same event. So it lives in this browser and nowhere else.
+	 */
+	const SETTING = 'na-ex-hustota';
+	let step = $state(DEFAULT_DENSITY);
+	let dialOpen = $state(false);
+
+	const density = $derived(DENSITIES[step]);
+
+	/**
+	 * Measured rather than assumed: the dial picks how big a card is, and the
+	 * screen decides how many of them it has room for. One row is assumed until
+	 * a card exists to measure, which is enough to get the first one drawn.
+	 */
+	let shellHeight = $state(0);
+	let cardHeight = $state(0);
+	const rows = $derived(cardHeight > 0 ? rowsThatFit(shellHeight, cardHeight) : 1);
+	const tiers = $derived(split(view.leaderboard.length, density.columns, rows));
+	const topRows = $derived(view.leaderboard.slice(0, tiers.top));
+	const smallRows = $derived(view.leaderboard.slice(tiers.top, tiers.top + tiers.small));
+
+	$effect(() => {
+		try {
+			const saved = localStorage.getItem(SETTING);
+			if (saved !== null) step = clampStep(Number(saved));
+		} catch {
+			// Private windows and blocked storage both land here; the default is fine.
+		}
+	});
+
+	// Hidden on purpose: the board spends the evening on a wall, where a visible
+	// control is clutter that anybody walking past can lean on.
+	$effect(() => {
+		const onKey = (event: KeyboardEvent) => {
+			if (event.target !== document.body) return;
+			if (event.key === 'v' || event.key === 'V') dialOpen = !dialOpen;
+			if (event.key === 'Escape') dialOpen = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
+	function setStep(value: number) {
+		step = clampStep(value);
+		try {
+			localStorage.setItem(SETTING, String(step));
+		} catch {
+			// Not being able to remember it is survivable; the dial still works.
+		}
+	}
 	const busiestDrink = $derived(Math.max(1, ...view.byDrink.map((d) => d.count)));
 	const busiestHour = $derived(Math.max(1, ...view.pace.map((p) => p.drinks)));
 
@@ -92,33 +155,59 @@
 		</section>
 	{:else}
 		<div class="wrap">
-			<div class="mats">
-				<ol class="ranking" role="list" aria-label="Žebříček">
-					{#each view.leaderboard as row, i (row.nick)}
-						<li class="mat" class:lead={i === 0 && podium}>
-							<div>
-								<h2 class="nick">{row.nick}</h2>
-								<p class="cnt">{drinks(row.drinks)}</p>
-							</div>
-							<p class="ml">{row.ethanolMl} ml</p>
-							<Tally keys={row.mix} px={i === 0 && podium ? 1.4 : 0.95} {labels} />
-						</li>
-					{/each}
-				</ol>
+			<div class="left">
+				<div class="mats">
+					<ol class="ranking" role="list" aria-label="Žebříček">
+						{#each topRows as row, i (row.nick)}
+							<li
+								class="mat"
+								class:lead={i === 0 && podium}
+								class:silver={i === 1 && podium}
+								class:bronze={i === 2 && podium}
+							>
+								<div>
+									<h2 class="nick">{row.nick}</h2>
+									<p class="cnt">{drinks(row.drinks)}</p>
+								</div>
+								<p class="ml">{row.ethanolMl} ml</p>
+								<Tally keys={row.mix} px={i === 0 && podium ? 1.4 : 0.95} {labels} />
+							</li>
+						{/each}
+					</ol>
 
-				{#if !data.event.closedAt}
-					<aside class="joinmat">
-						<img
-							class="qr"
-							src={resolve('/a/[kod]/qr', { kod: data.event.code })}
-							alt="QR kód pro připojení k akci {data.event.code}"
-						/>
-						<div>
+					{#if !data.event.closedAt}
+						<aside class="joinmat">
+							<img
+								class="qr"
+								src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+								alt="QR kód pro připojení k akci {data.event.code}"
+							/>
 							<p class="lbl">Přidej se</p>
-							<p class="code-big">{data.event.code}</p>
-							<p class="lbl">{data.joinUrl.split('/a/')[0].replace(/^https?:\/\//, '')}</p>
-						</div>
-					</aside>
+						</aside>
+					{/if}
+				</div>
+
+				{#if view.leaderboard.length > tiers.top}
+					<div class="shell" bind:clientHeight={shellHeight}>
+						<ol
+							class="smalls"
+							role="list"
+							aria-label="Dál v pořadí"
+							style="--cols: {density.columns}; --scale: {density.scale}"
+						>
+							{#each smallRows as row, i (row.nick)}
+								<li class="small" bind:clientHeight={cardHeight}>
+									<span class="place">{tiers.top + i + 1}</span>
+									<span class="sname">{row.nick}</span>
+									<span class="sml">{row.ethanolMl} ml</span>
+								</li>
+							{/each}
+						</ol>
+					</div>
+				{/if}
+
+				{#if tiers.rest > 0}
+					<p class="more">{others(tiers.rest)}</p>
 				{/if}
 			</div>
 
@@ -190,6 +279,23 @@
 	{#if data.isHost}
 		<a class="admin" href={resolve('/a/[kod]/sprava', { kod: data.event.code })}>Správa akce</a>
 	{/if}
+
+	{#if dialOpen}
+		<aside class="dial">
+			<label for="hustota">Velikost kartiček</label>
+			<input
+				id="hustota"
+				type="range"
+				min="0"
+				max={DENSITIES.length - 1}
+				step="1"
+				value={step}
+				oninput={(event) => setStep(Number(event.currentTarget.value))}
+			/>
+			<p><b>{density.label}</b> &middot; {tiers.small} lidí pod medailemi</p>
+			<p class="dim">Zavře se klávesou V. Platí pro tuhle obrazovku.</p>
+		</aside>
+	{/if}
 </main>
 
 <style>
@@ -208,6 +314,16 @@
 		display: flex;
 		flex-direction: column;
 		gap: clamp(10px, 1.4vw, 18px);
+		overflow: hidden;
+	}
+
+	/* A screen on a wall has no scrollbar and nobody to reach it, so the board
+	   is exactly the window and the cards underneath take what is left. A phone
+	   is held and scrolled, so there it keeps growing. */
+	@media (min-width: 901px) {
+		.board {
+			height: 100dvh;
+		}
 	}
 
 	.top {
@@ -271,6 +387,13 @@
 		list-style: none;
 	}
 
+	.left {
+		display: flex;
+		flex-direction: column;
+		gap: clamp(8px, 1vw, 14px);
+		min-height: 0;
+	}
+
 	.mats {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -299,6 +422,14 @@
 		background: var(--amber);
 		grid-row: span 2;
 		justify-content: space-between;
+	}
+
+	.mat.silver {
+		background: #c8cedc;
+	}
+
+	.mat.bronze {
+		background: #c98a1c;
 	}
 
 	.nick {
@@ -334,24 +465,34 @@
 	}
 
 	/* The glasses sit on the bottom edge of the mat, under a tear line. */
+	/* The glasses say what somebody drank; the number above them says how much.
+	   At twenty-five people with a dozen rounds each the glasses would wrap into
+	   a wall of their own and push everybody below off the screen, so they get
+	   a fixed strip: one row on a mat, two on the leader's. */
 	.mat :global(.tally) {
 		margin-top: auto;
 		padding-top: 6px;
 		border-top: 2px dashed rgba(21, 18, 12, 0.22);
+		max-height: calc(var(--rows, 1) * clamp(26px, 2.4vw, 38px));
+		overflow: hidden;
+	}
+
+	.mat.lead :global(.tally) {
+		--rows: 2;
 	}
 
 	.joinmat {
-		grid-column: span 2;
 		background: var(--ink);
 		color: var(--paper);
-		padding: 14px 18px;
+		padding: clamp(7px, 0.7vw, 11px);
 		display: flex;
 		align-items: center;
-		gap: 18px;
+		justify-content: center;
+		gap: clamp(8px, 1vw, 14px);
 	}
 
 	.joinmat .qr {
-		width: clamp(70px, 8vw, 118px);
+		width: clamp(62px, 6vw, 96px);
 		height: auto;
 		flex: none;
 		background: #fff;
@@ -366,15 +507,115 @@
 		color: #9b8f6e;
 	}
 
-	.code-big {
-		margin: 2px 0;
+	/* Everybody who is not on a medal. Same mat, printed small: a rank, a name
+	   and a number, because at this size a glass would be a smudge. */
+	/* Takes whatever the medals leave and never more, so the board as a whole
+	   stays the size of the screen it hangs on. */
+	.shell {
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.smalls {
+		display: grid;
+		grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+		gap: clamp(5px, 0.6vw, 10px);
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		align-content: start;
+		min-height: 0;
+	}
+
+	.small {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: baseline;
+		column-gap: calc(7px * var(--scale));
+		border: 3px solid var(--ink);
+		background: var(--paper);
+		box-shadow: 3px 3px 0 rgb(21 18 12 / 0.16);
+		padding: calc(7px * var(--scale)) calc(9px * var(--scale));
+	}
+
+	.small .place {
 		font-family: 'Pixelify Sans', ui-monospace, monospace;
-		font-size: clamp(26px, 3.4vw, 50px);
-		letter-spacing: 0.08em;
+		font-size: calc(clamp(13px, 1.1vw, 18px) * var(--scale));
+		color: var(--quiet);
 		line-height: 1;
 	}
 
+	.small .sname {
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: calc(clamp(15px, 1.35vw, 23px) * var(--scale));
+		line-height: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.small .sml {
+		grid-column: 2;
+		font-size: calc(clamp(11px, 0.95vw, 15px) * var(--scale));
+		font-variant-numeric: tabular-nums;
+		color: var(--quiet);
+	}
+
+	/* The tail of a long party. A card each would cost more room than the fact
+	   is worth, and a name nobody can read is worse than no name. */
+	.more {
+		margin: 0;
+		font-size: clamp(12px, 1.05vw, 16px);
+		color: var(--quiet);
+	}
+
+	/* Hidden until somebody presses V, and then it sits over the corner rather
+	   than pushing the board around while it is being set. */
+	.dial {
+		position: fixed;
+		right: clamp(10px, 1.6vw, 24px);
+		bottom: clamp(10px, 1.6vw, 24px);
+		z-index: 40;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		width: min(300px, 80vw);
+		border: 4px solid var(--ink);
+		background: var(--paper);
+		box-shadow: 6px 6px 0 rgb(21 18 12 / 0.18);
+		padding: 14px 16px;
+		font-size: 13px;
+	}
+
+	.dial label {
+		font-size: 10px;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--quiet);
+	}
+
+	.dial input {
+		width: 100%;
+		accent-color: var(--ink);
+		margin: 0;
+	}
+
+	.dial p {
+		margin: 0;
+	}
+
+	.dial .dim {
+		color: var(--quiet);
+		font-size: 11.5px;
+		line-height: 1.5;
+	}
+
+	/* The column beside the board keeps to the window too, or its last tile
+	   slides under the feed along the bottom. */
 	.side {
+		min-height: 0;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		gap: clamp(9px, 1vw, 14px);

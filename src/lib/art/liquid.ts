@@ -22,7 +22,9 @@ import type { DrinkKey } from '$lib/drinks';
  */
 const DENSITY: Record<DrinkKey, number> = {
 	soft: 1.05,
+	liqueur: 1.03,
 	beer: 1.01,
+	mixed: 1.0,
 	wine: 0.99,
 	shot: 0.93
 };

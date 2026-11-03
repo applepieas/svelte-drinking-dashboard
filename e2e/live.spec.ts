@@ -38,7 +38,7 @@ test('the estimate needs a profile and never goes negative', async ({ page }) =>
 	// Sober, and no drink can make that a negative number.
 	await expect(page.getByText('0,00 ‰')).toBeVisible();
 
-	await page.getByRole('button', { name: /^Panák/ }).click();
+	await page.getByRole('button', { name: /^Tvrdý/ }).click();
 	// Climbing from zero rather than jumping, and never below it.
 	await expect(page.getByText(/^0,\d\d ‰$/)).toBeVisible();
 });

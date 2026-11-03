@@ -1,4 +1,4 @@
-import type { GlassKey } from './sprites';
+import type { PanelKey } from './glass';
 
 /** Per-glass adjustments on top of what `LANDING_PANELS` already says. */
 export interface Tune {
@@ -10,9 +10,9 @@ export interface Tune {
 	dy: number;
 }
 
-export type TuneSet = Record<'columns' | 'bands', Record<GlassKey, Tune>>;
+export type TuneSet = Record<'columns' | 'bands', Record<PanelKey, Tune>>;
 
-const flat = (): Record<GlassKey, Tune> => ({
+const flat = (): Record<PanelKey, Tune> => ({
 	beer: { size: 1, dx: 0, dy: 0 },
 	wine: { size: 1, dx: 0, dy: 0 },
 	shot: { size: 1, dx: 0, dy: 0 },

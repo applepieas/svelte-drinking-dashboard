@@ -6,7 +6,9 @@ import Tally from './Tally.svelte';
 const LABELS: Record<DrinkKey, string> = {
 	beer: 'Pivo',
 	wine: 'Víno',
-	shot: 'Panák',
+	shot: 'Tvrdý 40 %',
+	liqueur: 'Slabší 20 %',
+	mixed: 'Míchaný',
 	soft: 'Nealko'
 };
 
@@ -17,7 +19,7 @@ describe('Tally', () => {
 		expect(marks).toHaveLength(3);
 		expect([...marks].map((svg) => svg.querySelector('title')?.textContent)).toEqual([
 			'Pivo',
-			'Panák',
+			'Tvrdý 40 %',
 			'Pivo'
 		]);
 	});

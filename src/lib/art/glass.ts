@@ -37,8 +37,11 @@ export function glassSvg(sprite: Sprite, title: string): string {
 	return parts.join('');
 }
 
+/** The glasses the landing page stands up, which is not every glass drawn. */
+export type PanelKey = Extract<GlassKey, 'beer' | 'wine' | 'shot' | 'soft' | 'mixed'>;
+
 export interface LandingPanel {
-	key: GlassKey;
+	key: PanelKey;
 	/** Not rendered yet — it names the panel for assistive tech. */
 	label: string;
 	/** The ground the glass stands against, chosen to contrast with the drink. */

@@ -52,7 +52,7 @@ test('the leaderboard ranks by ethanol rather than by number of drinks', async (
 	// A second device: clearing cookies is what makes this a different person.
 	await page.context().clearCookies();
 	await join(page, code, 'panakar');
-	await page.getByRole('button', { name: /^Panák/ }).click();
+	await page.getByRole('button', { name: /^Tvrdý/ }).click();
 	await expect(page.getByText(/1\s+zápis/)).toBeVisible();
 
 	await page.goto(`/a/${code}`);

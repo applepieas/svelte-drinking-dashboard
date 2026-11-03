@@ -13,7 +13,7 @@ export interface Sprite {
 	readonly rows: readonly (readonly number[])[];
 }
 
-export const GLASSES = {
+const TRACED = {
 	beer: {
 		w: 29,
 		h: 32,
@@ -281,5 +281,28 @@ export const GLASSES = {
 		]
 	}
 } as const satisfies Record<string, Sprite>;
+
+/**
+ * The weaker shot is the same glass with something green in it.
+ *
+ * Only the three shades of the contents move; the glass itself keeps every
+ * pixel it was traced with, so the two shots read as one object seen twice
+ * rather than two drawings that happen to be similar. Drawing it again would
+ * have meant a second chance to get the glass subtly wrong.
+ */
+const GREEN_CONTENTS: Record<string, string> = {
+	'#8F3711': '#2E8B74',
+	'#DB591B': '#3BBA9C',
+	'#F8A52B': '#7FE0C4'
+};
+
+function recolour(sprite: Sprite, swap: Record<string, string>): Sprite {
+	return { ...sprite, palette: sprite.palette.map((colour) => swap[colour] ?? colour) };
+}
+
+export const GLASSES = {
+	...TRACED,
+	liqueur: recolour(TRACED.shot, GREEN_CONTENTS)
+} satisfies Record<string, Sprite>;
 
 export type GlassKey = keyof typeof GLASSES;
