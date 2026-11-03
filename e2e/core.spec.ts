@@ -14,7 +14,7 @@ test('a host can run an event from creation to closing', async ({ page }) => {
 	const code = await createEvent(page, 'host');
 
 	await expect(page.getByRole('heading', { name: `${E2E_PREFIX}host` })).toBeVisible();
-	await expect(page.getByText(`Kód: ${code}`)).toBeVisible();
+	await expect(page.getByText(`kód ${code}`)).toBeVisible();
 	// The screen must always show a way in.
 	await expect(page.getByRole('img', { name: /QR kód/ })).toBeVisible();
 
@@ -56,7 +56,7 @@ test('the leaderboard ranks by ethanol rather than by number of drinks', async (
 	await expect(page.getByText(/1\s+zápis/)).toBeVisible();
 
 	await page.goto(`/a/${code}`);
-	const rows = page.getByRole('listitem').filter({ hasText: /ml$/ });
+	const rows = page.getByRole('list', { name: 'Žebříček' }).getByRole('listitem');
 	await expect(rows.first()).toContainText('panakar');
 	await expect(rows.nth(1)).toContainText('nealkoholik');
 });

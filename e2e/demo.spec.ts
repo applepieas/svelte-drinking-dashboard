@@ -16,8 +16,8 @@ test('the demo link lands on a populated board', async ({ page, request }) => {
 
 	// Seeded with history, so nobody arrives at "nothing has happened yet".
 	await expect(page.getByText('Zatím nikdo nic nezapsal.')).toHaveCount(0);
-	await expect(page.getByRole('heading', { name: 'Žebříček' })).toBeVisible();
-	await expect(page.getByText(/celkem \d+ ml etanolu/)).toBeVisible();
+	await expect(page.getByRole('list', { name: 'Žebříček' })).toBeVisible();
+	await expect(page.getByText(/\d+ ml etanolu/)).toBeVisible();
 });
 
 test('maintenance refuses to run without the right key', async ({ request }) => {

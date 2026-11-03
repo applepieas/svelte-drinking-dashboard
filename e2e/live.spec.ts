@@ -18,9 +18,9 @@ test('the screen updates without being reloaded', async ({ browser }) => {
 
 	// No reload anywhere: this can only arrive over the stream. Scoped to the
 	// leaderboard, because the nick also shows up in the list of recent entries.
-	const board = screen.locator('ol');
+	const board = screen.getByRole('list', { name: 'Žebříček' });
 	await expect(board.getByText('telefon')).toBeVisible({ timeout: 10_000 });
-	await expect(screen.getByText('celkem 22 ml etanolu')).toBeVisible();
+	await expect(screen.locator('header').getByText('22 ml')).toBeVisible();
 
 	await phone.getByRole('button', { name: /Vzít zpět/ }).click();
 	await expect(screen.getByText('Zatím nikdo nic nezapsal.')).toBeVisible({ timeout: 10_000 });

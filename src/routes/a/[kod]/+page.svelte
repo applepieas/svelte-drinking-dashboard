@@ -1,85 +1,70 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import type { LogEntry } from '$lib/events';
+	import type { DrinkKey } from '$lib/drinks';
 	import HostViewToggle from '$lib/components/HostViewToggle.svelte';
-	import { mergeBySeq, reduceLog } from '$lib/leaderboard';
+	import Tally from '$lib/art/Tally.svelte';
+	import { reduceLog } from '$lib/leaderboard';
+	import { liveLog } from '$lib/liveLog.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	/** How long a gap may last before it is worth telling the room about. */
-	const RECONNECT_GRACE_MS = 8000;
+	const log = liveLog(
+		() => data.event.code,
+		() => data.entries
+	);
 
-	/** Rows that arrived over the stream since the last full load. */
-	let streamed = $state<LogEntry[]>([]);
-	let connected = $state(true);
-	let everConnected = $state(false);
+	const view = $derived(reduceLog(log.entries, data.event.drinks));
 
-	// The server snapshot stays the source of truth; the stream only adds to it.
-	// After invalidateAll() brings a fresh snapshot the overlap merges away.
-	const entries = $derived(mergeBySeq(data.entries, streamed));
-	const view = $derived(reduceLog(entries, data.event.drinks));
+	const labels = $derived(
+		Object.fromEntries(data.event.drinks.map((drink) => [drink.key, drink.label])) as Record<
+			DrinkKey,
+			string
+		>
+	);
+	const colours = $derived(
+		Object.fromEntries(data.event.drinks.map((drink) => [drink.key, drink.color])) as Record<
+			DrinkKey,
+			string
+		>
+	);
 
-	const labelFor = (key: string | null) =>
-		data.event.drinks.find((drink) => drink.key === key)?.label ?? '?';
+	const labelFor = (key: string | null) => labels[key as DrinkKey] ?? '?';
+
+	// The mat grid puts the leader on a double tile, which only reads as a
+	// podium once there are a few people to stand above.
+	const podium = $derived(view.leaderboard.length >= 4);
+	const busiestDrink = $derived(Math.max(1, ...view.byDrink.map((d) => d.count)));
+	const busiestHour = $derived(Math.max(1, ...view.pace.map((p) => p.drinks)));
+
+	const hours = $derived(Math.floor(view.elapsedMinutes / 60));
+	const mins = $derived(view.elapsedMinutes % 60);
+
+	/** 1 nápoj, 2 nápoje, 5 nápojů — the shape Czech counting takes. */
+	const drinks = (n: number) => `${n} ${n === 1 ? 'nápoj' : n < 5 ? 'nápoje' : 'nápojů'}`;
 
 	const time = new Intl.DateTimeFormat('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-
-	$effect(() => {
-		const code = data.event.code;
-		// untrack, or appending an entry would re-run this effect and reconnect.
-		const from = untrack(() => entries.reduce((max, item) => Math.max(max, item.seq), 0));
-
-		const source = new EventSource(`/a/${code}/udalosti?od=${from}`);
-
-		source.addEventListener('open', () => {
-			clearTimeout(graceTimer);
-			connected = true;
-			everConnected = true;
-		});
-
-		source.addEventListener('entry', (message) => {
-			streamed.push(JSON.parse(message.data) as LogEntry);
-			connected = true;
-		});
-
-		// Something the log cannot express changed — closed, or someone kicked.
-		source.addEventListener('state', () => {
-			void invalidateAll();
-		});
-
-		/**
-		 * Streams are deliberately short-lived, so a closed connection is the
-		 * normal case rather than a fault. Announcing every one of them would
-		 * leave a permanent "connection lost" banner on a screen that is working
-		 * perfectly, so the warning waits to see whether the reconnect succeeds.
-		 */
-		let graceTimer: ReturnType<typeof setTimeout> | undefined;
-		source.onerror = () => {
-			clearTimeout(graceTimer);
-			graceTimer = setTimeout(() => (connected = false), RECONNECT_GRACE_MS);
-		};
-
-		return () => {
-			clearTimeout(graceTimer);
-			source.close();
-		};
-	});
+	const pad = (n: number) => String(n).padStart(2, '0');
 </script>
 
-<main class="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-	<header class="flex flex-wrap items-baseline justify-between gap-2">
-		<h1 class="text-2xl font-semibold">{data.event.name}</h1>
-		<p class="muted num">Kód: {data.event.code}</p>
+<main class="board">
+	<header class="top">
+		<h1>{data.event.name}</h1>
+		<div class="meta">
+			<span><b>{view.totalEthanolMl} ml</b> etanolu</span>
+			{#if view.elapsedMinutes > 0}
+				<span>jede <b>{hours} h {pad(mins)} min</b></span>
+			{/if}
+			<a class="swap" href={resolve('/a/[kod]/nadoba', { kod: data.event.code })}>Nádoba ⟶</a>
+			<span class="code">kód {data.event.code}</span>
+		</div>
 	</header>
 
 	{#if data.isHost && !data.event.closedAt}
 		<HostViewToggle code={data.event.code} current="obrazovka" joined={Boolean(data.me)} />
 	{/if}
 
-	{#if everConnected && !connected}
+	{#if log.everConnected && !log.connected}
 		<p class="alert" role="status">Spojení vypadlo, připojuji se znovu. Data zůstávají.</p>
 	{/if}
 
@@ -87,64 +72,507 @@
 		<p class="alert">Akce skončila. Tohle je konečné pořadí.</p>
 	{/if}
 
-	<section class="card flex flex-col gap-3">
-		<div class="flex items-baseline justify-between">
-			<h2 class="font-semibold">Žebříček</h2>
-			<p class="muted num text-sm">celkem {view.totalEthanolMl} ml etanolu</p>
+	{#if view.leaderboard.length === 0}
+		<section class="empty">
+			<p>Zatím nikdo nic nezapsal.</p>
+			<p class="join-big">
+				Naskenuj kód, nebo zadej <b>{data.event.code}</b> na {data.joinUrl.split('/a/')[0]}
+			</p>
+			{#if !data.event.closedAt}
+				<img
+					class="qr"
+					src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+					alt="QR kód pro připojení k akci {data.event.code}"
+				/>
+			{/if}
+		</section>
+	{:else}
+		<div class="wrap">
+			<div class="mats">
+				<ol class="ranking" role="list" aria-label="Žebříček">
+					{#each view.leaderboard as row, i (row.nick)}
+						<li class="mat" class:lead={i === 0 && podium}>
+							<div>
+								<h2 class="nick">{row.nick}</h2>
+								<p class="cnt">{drinks(row.drinks)}</p>
+							</div>
+							<p class="ml">{row.ethanolMl} ml</p>
+							<Tally keys={row.mix} px={i === 0 && podium ? 1.4 : 0.95} {labels} />
+						</li>
+					{/each}
+				</ol>
+
+				{#if !data.event.closedAt}
+					<aside class="joinmat">
+						<img
+							class="qr"
+							src={resolve('/a/[kod]/qr', { kod: data.event.code })}
+							alt="QR kód pro připojení k akci {data.event.code}"
+						/>
+						<div>
+							<p class="lbl">Přidej se</p>
+							<p class="code-big">{data.event.code}</p>
+							<p class="lbl">{data.joinUrl.split('/a/')[0].replace(/^https?:\/\//, '')}</p>
+						</div>
+					</aside>
+				{/if}
+			</div>
+
+			<div class="side">
+				<section class="tile">
+					<h2>Co se pilo</h2>
+					{#each view.byDrink as drink (drink.key)}
+						<div class="mixrow">
+							<Tally keys={[drink.key]} px={0.9} {labels} />
+							<span class="lbl2">{labels[drink.key]}</span>
+							<span class="n">{drink.count}<small>{drink.ethanolMl} ml</small></span>
+							<span class="bar">
+								<span
+									style="width: {Math.round(
+										(drink.count / busiestDrink) * 100
+									)}%; background: {colours[drink.key]}"
+								></span>
+							</span>
+						</div>
+					{/each}
+				</section>
+
+				{#if view.lastHour.length > 0}
+					<section class="tile">
+						<h2>Poslední hodina</h2>
+						<p class="hour">
+							<span class="who">{view.lastHour[0].nick}</span>
+							<span class="num"
+								>{drinks(view.lastHour[0].drinks)} · {view.lastHour[0].ethanolMl} ml</span
+							>
+						</p>
+						<ul class="chase">
+							{#each view.lastHour.slice(1, 4) as row (row.nick)}
+								<li><b>{row.nick}</b> {row.drinks} · {row.ethanolMl} ml</li>
+							{/each}
+						</ul>
+					</section>
+				{/if}
+
+				{#if view.pace.length > 1}
+					<section class="tile grow">
+						<h2>Tempo po hodinách</h2>
+						<div class="pace">
+							{#each view.pace as bucket, i (i)}
+								<div class:now={i === view.pace.length - 1}>
+									<i style="height: {Math.round((bucket.drinks / busiestHour) * 100)}%"></i>
+									<em>{pad(bucket.hour)}</em>
+								</div>
+							{/each}
+						</div>
+					</section>
+				{/if}
+			</div>
 		</div>
 
-		{#if view.leaderboard.length === 0}
-			<p class="muted">Zatím nikdo nic nezapsal.</p>
-		{:else}
-			<ol class="flex flex-col gap-1">
-				{#each view.leaderboard as row, index (row.nick)}
-					<li class="flex items-baseline gap-3">
-						<span class="muted num w-6 text-right text-sm">{index + 1}.</span>
-						<span class="grow">{row.nick}</span>
-						<span class="muted num text-sm">
-							{row.drinks}
-							{row.drinks === 1 ? 'nápoj' : 'nápojů'}
-						</span>
-						<span class="num w-20 text-right font-semibold">{row.ethanolMl} ml</span>
-					</li>
+		{#if view.recent.length > 0}
+			<footer class="feed">
+				{#each view.recent.slice(0, 7) as item (item.seq)}
+					<span>
+						{time.format(new Date(item.at))}
+						<b>{item.nick}</b>
+						{labelFor(item.drinkKey)}
+					</span>
 				{/each}
-			</ol>
+			</footer>
 		{/if}
-	</section>
-
-	{#if view.recent.length > 0}
-		<section class="card flex flex-col gap-2">
-			<h2 class="font-semibold">Poslední zápisy</h2>
-			<ul class="flex flex-col gap-1">
-				{#each view.recent as item (item.seq)}
-					<li class="muted flex gap-2 text-sm">
-						<span class="num">{time.format(new Date(item.at))}</span>
-						<span class="text-black">{item.nick}</span>
-						<span>{labelFor(item.drinkKey)}</span>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
-	{#if !data.event.closedAt}
-		<section class="card flex flex-wrap items-center gap-4">
-			<img
-				class="h-40 w-40 shrink-0"
-				src={resolve('/a/[kod]/qr', { kod: data.event.code })}
-				alt="QR kód pro připojení k akci {data.event.code}"
-			/>
-			<div class="flex flex-col gap-1">
-				<h2 class="font-semibold">Přidej se</h2>
-				<p class="muted text-sm">Naskenuj kód, nebo zadej na {data.joinUrl.split('/a/')[0]}</p>
-				<p class="num text-xl">{data.event.code}</p>
-			</div>
-		</section>
 	{/if}
 
 	{#if data.isHost}
-		<a href={resolve('/a/[kod]/sprava', { kod: data.event.code })} class="muted text-sm">
-			Správa akce
-		</a>
+		<a class="admin" href={resolve('/a/[kod]/sprava', { kod: data.event.code })}>Správa akce</a>
 	{/if}
 </main>
+
+<style>
+	/* A screen hung in a room and read from across it, not a page anybody leans
+	   into. Everything is sized so the ranking carries at a distance. */
+	.board {
+		--ink: #15120c;
+		--paper: #fff8e8;
+		--amber: #ffc60b;
+		--ground: #f4eddc;
+		--quiet: #6b5b33;
+		min-height: 100dvh;
+		background: var(--ground);
+		color: var(--ink);
+		padding: clamp(14px, 2.2vw, 30px);
+		display: flex;
+		flex-direction: column;
+		gap: clamp(10px, 1.4vw, 18px);
+	}
+
+	.top {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px 22px;
+	}
+
+	.top h1 {
+		margin: 0;
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(26px, 2.8vw, 40px);
+		font-weight: 700;
+		line-height: 1;
+	}
+
+	.meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 22px;
+		align-items: baseline;
+		font-size: clamp(12px, 1vw, 15px);
+		color: var(--quiet);
+	}
+
+	.meta b {
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(18px, 1.8vw, 27px);
+		color: var(--ink);
+	}
+
+	/* The other way of looking at the same evening. */
+	.swap {
+		color: var(--ink);
+		text-decoration: none;
+		border-bottom: 2px solid var(--ink);
+	}
+
+	.alert {
+		margin: 0;
+		border: 3px solid var(--ink);
+		background: var(--amber);
+		padding: 10px 14px;
+		font-weight: 600;
+	}
+
+	.wrap {
+		flex: 1;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) clamp(280px, 26vw, 400px);
+		gap: clamp(10px, 1.1vw, 16px);
+		min-height: 0;
+	}
+
+	.ranking {
+		display: contents;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.mats {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: clamp(9px, 1vw, 14px);
+		align-content: start;
+		min-height: 0;
+	}
+
+	.mat,
+	.joinmat,
+	.tile {
+		border: 4px solid var(--ink);
+		background: var(--paper);
+		box-shadow: 6px 6px 0 rgba(21, 18, 12, 0.18);
+		min-width: 0;
+	}
+
+	.mat {
+		padding: 14px 16px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
+	}
+
+	.mat.lead {
+		background: var(--amber);
+		grid-row: span 2;
+		justify-content: space-between;
+	}
+
+	.nick {
+		margin: 0;
+		font-size: clamp(16px, 1.5vw, 21px);
+		font-weight: 700;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.mat.lead .nick {
+		font-size: clamp(20px, 2.1vw, 31px);
+	}
+
+	.cnt {
+		margin: 0;
+		font-size: clamp(10px, 0.78vw, 12px);
+		color: var(--quiet);
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.ml {
+		margin: 0;
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(26px, 2.6vw, 38px);
+		line-height: 0.9;
+	}
+
+	.mat.lead .ml {
+		font-size: clamp(44px, 5.4vw, 80px);
+	}
+
+	/* The glasses sit on the bottom edge of the mat, under a tear line. */
+	.mat :global(.tally) {
+		margin-top: auto;
+		padding-top: 6px;
+		border-top: 2px dashed rgba(21, 18, 12, 0.22);
+	}
+
+	.joinmat {
+		grid-column: span 2;
+		background: var(--ink);
+		color: var(--paper);
+		padding: 14px 18px;
+		display: flex;
+		align-items: center;
+		gap: 18px;
+	}
+
+	.joinmat .qr {
+		width: clamp(70px, 8vw, 118px);
+		height: auto;
+		flex: none;
+		background: #fff;
+		padding: 5px;
+	}
+
+	.lbl {
+		margin: 0;
+		font-size: clamp(9px, 0.75vw, 11px);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: #9b8f6e;
+	}
+
+	.code-big {
+		margin: 2px 0;
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(26px, 3.4vw, 50px);
+		letter-spacing: 0.08em;
+		line-height: 1;
+	}
+
+	.side {
+		display: flex;
+		flex-direction: column;
+		gap: clamp(9px, 1vw, 14px);
+		min-height: 0;
+	}
+
+	.tile {
+		padding: 13px 15px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 9px;
+	}
+
+	.tile.grow {
+		flex: 1;
+	}
+
+	.tile h2 {
+		margin: 0;
+		font-size: clamp(9px, 0.76vw, 11px);
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--quiet);
+		font-weight: 600;
+	}
+
+	.mixrow {
+		display: grid;
+		grid-template-columns: 34px minmax(0, 1fr) auto;
+		gap: 10px;
+		align-items: center;
+	}
+
+	.mixrow :global(.tally) {
+		justify-content: center;
+	}
+
+	.lbl2 {
+		font-size: clamp(12px, 1.05vw, 15px);
+		font-weight: 600;
+	}
+
+	.n {
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(16px, 1.5vw, 21px);
+		text-align: right;
+	}
+
+	.n small {
+		display: block;
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
+		font-size: 11px;
+		color: var(--quiet);
+	}
+
+	.bar {
+		grid-column: 2;
+		height: 7px;
+		background: rgba(21, 18, 12, 0.12);
+		margin-top: -4px;
+	}
+
+	.bar span {
+		display: block;
+		height: 100%;
+	}
+
+	.hour {
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 10px;
+	}
+
+	.who {
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: clamp(20px, 2.1vw, 31px);
+	}
+
+	.num {
+		font-size: clamp(11px, 0.95vw, 14px);
+		color: var(--quiet);
+	}
+
+	.chase {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: clamp(11px, 0.9vw, 13px);
+		color: var(--quiet);
+	}
+
+	.chase b {
+		color: var(--ink);
+	}
+
+	.pace {
+		display: flex;
+		align-items: flex-end;
+		gap: 7px;
+		flex: 1;
+		min-height: 70px;
+	}
+
+	.pace div {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 5px;
+		height: 100%;
+	}
+
+	.pace i {
+		display: block;
+		width: 100%;
+		background: var(--ink);
+	}
+
+	.pace div.now i {
+		background: var(--amber);
+		outline: 2px solid var(--ink);
+	}
+
+	.pace em {
+		font-style: normal;
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
+		font-size: 11px;
+		color: var(--quiet);
+	}
+
+	.feed {
+		display: flex;
+		gap: clamp(12px, 1.6vw, 24px);
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
+		font-size: clamp(11px, 0.95vw, 14px);
+		color: var(--quiet);
+		border-top: 3px solid var(--ink);
+		padding-top: 10px;
+		overflow: hidden;
+		white-space: nowrap;
+	}
+
+	.feed b {
+		color: var(--ink);
+	}
+
+	.empty {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+		text-align: center;
+	}
+
+	.empty p {
+		margin: 0;
+		font-size: clamp(14px, 1.4vw, 20px);
+	}
+
+	.join-big b {
+		font-family: 'Pixelify Sans', ui-monospace, monospace;
+		font-size: 1.5em;
+		letter-spacing: 0.06em;
+	}
+
+	.empty .qr {
+		width: clamp(140px, 18vw, 240px);
+		height: auto;
+	}
+
+	.admin {
+		color: var(--quiet);
+		font-size: 13px;
+	}
+
+	/* Narrow screens get one column of mats and the tiles below them. The screen
+	   this is really for is a wide one, so this is a fallback rather than a
+	   design of its own. */
+	@media (max-width: 900px) {
+		.wrap {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.mats {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.mat.lead {
+			grid-row: auto;
+			grid-column: span 2;
+		}
+
+		.joinmat {
+			grid-column: span 2;
+		}
+	}
+</style>
