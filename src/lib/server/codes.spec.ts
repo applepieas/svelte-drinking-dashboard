@@ -45,6 +45,16 @@ describe('normalizeCode', () => {
 describe('generateCode', () => {
 	const codes = Array.from({ length: 500 }, generateCode);
 
+	// The pixel face on the screen draws a seven nobody can name, and a code is
+	// read off a wall and typed into a phone. Old codes still resolve.
+	it('never puts a seven in a new code', () => {
+		for (const code of codes) expect(code).not.toContain('7');
+	});
+
+	it('still accepts a code handed out before the seven was dropped', () => {
+		expect(normalizeCode('62NW57')).toBe('62NW57');
+	});
+
 	it('always produces a code that normalizeCode accepts unchanged', () => {
 		for (const code of codes) {
 			expect(normalizeCode(code)).toBe(code);

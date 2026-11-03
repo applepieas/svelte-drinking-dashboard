@@ -1,4 +1,19 @@
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I, L, O, 0, 1
+/**
+ * What a new code may contain.
+ *
+ * I, L, O, 0 and 1 are out because they are not distinguishable from one another
+ * at a glance. 7 is out for the same reason wearing a different hat: the screen
+ * sets codes in a pixel face whose seven is a bare diagonal, and people read it
+ * off a wall and type it into a phone. A character nobody can name is no use in
+ * a code however well it is drawn.
+ */
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ2345689';
+/**
+ * What an existing code may contain. Codes handed out before 7 was dropped are
+ * still painted on somebody's wall, so they have to keep resolving; they simply
+ * stop being issued.
+ */
+const ACCEPTED = `${ALPHABET}7`;
 const LENGTH = 6;
 
 /**
@@ -29,5 +44,5 @@ export function generateCode(): string {
 export function normalizeCode(raw: string): string | null {
 	const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
 	if (code.length !== LENGTH) return null;
-	return [...code].every((char) => ALPHABET.includes(char)) ? code : null;
+	return [...code].every((char) => ACCEPTED.includes(char)) ? code : null;
 }
