@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { DrinkKey } from '$lib/drinks';
+	import BoardSettings from '$lib/components/BoardSettings.svelte';
 	import HostViewToggle from '$lib/components/HostViewToggle.svelte';
 	import Tally from '$lib/art/Tally.svelte';
 	import {
@@ -16,7 +17,15 @@
 	import { liveLog } from '$lib/liveLog.svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
+
+	/**
+	 * The host's controls live in the settings panel, which needs JavaScript to
+	 * open. Until the page has hydrated - or for good, when it never does - the
+	 * plain links stay on the board instead, so nothing becomes unreachable.
+	 */
+	let hydrated = $state(false);
+	onMount(() => (hydrated = true));
 
 	const log = liveLog(
 		() => data.event.code,
@@ -165,7 +174,7 @@
 		</div>
 	</header>
 
-	{#if data.isHost && !data.event.closedAt}
+	{#if data.isHost && !data.event.closedAt && !hydrated}
 		<HostViewToggle code={data.event.code} current="obrazovka" joined={Boolean(data.me)} />
 	{/if}
 
@@ -346,38 +355,24 @@
 		</aside>
 	{/if}
 
-	{#if data.isHost}
+	{#if data.isHost && !hydrated}
 		<a class="admin" href={resolve('/a/[kod]/sprava', { kod: data.event.code })}>Správa akce</a>
 	{/if}
 
 	{#if dialOpen}
-		<aside class="dial">
-			<label for="hustota">Velikost kartiček</label>
-			<input
-				id="hustota"
-				type="range"
-				min="0"
-				max={DENSITIES.length - 1}
-				step="1"
-				value={step}
-				oninput={(event) => setStep(Number(event.currentTarget.value))}
-			/>
-			<p><b>{density.label}</b> &middot; {tiers.small} lidí pod medailemi</p>
-			<p class="dim">Zavře se klávesou V. Platí pro tuhle obrazovku.</p>
-
-			<!-- Unlike the size, this belongs to the party: it changes what every
-			     phone offers, so it is the host's to flip and it is saved on the event. -->
-			{#if data.isHost}
-				<form method="POST" action="?/napoj" class="switch" use:enhance>
-					<input type="hidden" name="drink" value="soft" />
-					<input type="hidden" name="on" value={softOn ? '0' : '1'} />
-					<span>Nealko ve hře: <b>{softOn ? 'ano' : 'ne'}</b></span>
-					<button>{softOn ? 'Vypnout' : 'Zapnout'}</button>
-				</form>
-			{:else}
-				<p class="dim">Nealko zapne hostitel ve Správě akce.</p>
-			{/if}
-		</aside>
+		<BoardSettings
+			code={data.event.code}
+			closed={Boolean(data.event.closedAt)}
+			isHost={data.isHost}
+			joined={Boolean(data.me)}
+			{softOn}
+			participants={data.participants}
+			{step}
+			fitted={tiers.small}
+			error={form?.error}
+			onstep={setStep}
+			onclose={() => (dialOpen = false)}
+		/>
 	{/if}
 </main>
 
@@ -632,67 +627,6 @@
 		margin: 0;
 		font-size: clamp(12px, 1.05vw, 16px);
 		color: var(--quiet);
-	}
-
-	/* Hidden until somebody presses V, and then it sits over the corner rather
-	   than pushing the board around while it is being set. */
-	.dial {
-		position: fixed;
-		right: clamp(10px, 1.6vw, 24px);
-		bottom: clamp(10px, 1.6vw, 24px);
-		z-index: 40;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		width: min(300px, 80vw);
-		border: 4px solid var(--ink);
-		background: var(--paper);
-		box-shadow: 6px 6px 0 rgb(21 18 12 / 0.18);
-		padding: 14px 16px;
-		font-size: 13px;
-	}
-
-	.dial label {
-		font-size: 10px;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--quiet);
-	}
-
-	.dial input {
-		width: 100%;
-		accent-color: var(--ink);
-		margin: 0;
-	}
-
-	.dial p {
-		margin: 0;
-	}
-
-	.dial .dim {
-		color: var(--quiet);
-		font-size: 11.5px;
-		line-height: 1.5;
-	}
-
-	.switch {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		margin-top: 4px;
-		padding-top: 10px;
-		border-top: 2px dashed rgb(21 18 12 / 0.22);
-	}
-
-	.switch button {
-		font: inherit;
-		font-weight: 600;
-		border: 3px solid var(--ink);
-		background: var(--amber);
-		color: var(--ink);
-		padding: 4px 10px;
-		cursor: pointer;
 	}
 
 	/* The column beside the board keeps to the window too, or its last tile

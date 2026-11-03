@@ -84,9 +84,8 @@
 	<section class="card sect">
 		<h2>Obrazovka</h2>
 		<p class="muted line">
-			Velikost kartiček na společné obrazovce přepneš klávesou <b>V</b> přímo na ní. Nastavení si pamatuje
-			ten počítač, na kterém tabuli máš puštěnou. Je tam i vypínač nealka, ale jen v prohlížeči, ve kterém
-			byla akce založená.
+			Všechno z téhle stránky je i přímo na tabuli: zmáčkni na ní klávesu <b>V</b>. Funguje to v
+			prohlížeči, ve kterém byla akce založena. Velikost kartiček si pamatuje ta obrazovka.
 		</p>
 	</section>
 

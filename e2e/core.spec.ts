@@ -89,8 +89,23 @@ test('an unknown code is not found', async ({ page }) => {
 test('the host can switch between the screen and logging on one device', async ({ page }) => {
 	const code = await createEvent(page, 'toggle');
 
+	/**
+	 * With JavaScript the host's controls fold into the settings panel; without
+	 * it the plain toggle stays on the board. Either way there is a way through.
+	 */
+	const toLogging = async () => {
+		if (test.info().project.name === 'no-js') {
+			await page.getByRole('link', { name: 'Zapisovat' }).click();
+			return;
+		}
+		// The toggle leaves the board once the page has hydrated.
+		await expect(page.getByRole('link', { name: 'Zapisovat', exact: true })).toHaveCount(0);
+		await page.keyboard.press('v');
+		await page.getByRole('link', { name: /Zapisovat odsud/ }).click();
+	};
+
 	// Not joined yet, so the write side has to start at the nick form.
-	await page.getByRole('link', { name: 'Zapisovat' }).click();
+	await toLogging();
 	await page.waitForURL(`**/a/${code}/pripojit`);
 
 	await join(page, code, 'hostitel');
@@ -100,7 +115,7 @@ test('the host can switch between the screen and logging on one device', async (
 	await page.waitForURL(`**/a/${code}`);
 
 	// Now that they are in, the toggle goes straight to logging.
-	await page.getByRole('link', { name: 'Zapisovat' }).click();
+	await toLogging();
 	await page.waitForURL(`**/a/${code}/zapis`);
 	await page.getByRole('button', { name: /^Pivo/ }).click();
 	await expect(page.getByText(/1\s+zápis/)).toBeVisible();

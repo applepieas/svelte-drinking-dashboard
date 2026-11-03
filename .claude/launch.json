@@ -4,7 +4,7 @@
 		{
 			"name": "na-ex-dev",
 			"runtimeExecutable": "pnpm",
-			"runtimeArgs": ["dev"],
+			"runtimeArgs": ["dev", "--host"],
 			"port": 5173
 		}
 	]
