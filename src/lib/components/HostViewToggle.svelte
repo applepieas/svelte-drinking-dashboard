@@ -41,28 +41,27 @@
 <style>
 	.toggle {
 		display: inline-flex;
-		border: 1px solid #000;
 		align-self: flex-start;
+		border: var(--line) solid var(--ink);
+		background: var(--paper);
 	}
 
 	.toggle a {
-		padding: 0.4rem 0.9rem;
+		padding: 0.55rem 1rem;
+		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
 		text-decoration: none;
-		font-size: 0.875rem;
-		color: #000;
-		background: #fff;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--ink);
 	}
 
 	.toggle a + a {
-		border-left: 1px solid #000;
-	}
-
-	.toggle a:hover {
-		background: #eee;
+		border-left: var(--line) solid var(--ink);
 	}
 
 	.toggle a[aria-current='page'] {
-		background: #000;
-		color: #fff;
+		background: var(--amber);
 	}
 </style>
