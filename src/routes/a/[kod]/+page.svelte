@@ -149,7 +149,8 @@
 		}
 	}
 	const busiestDrink = $derived(Math.max(1, ...view.byDrink.map((d) => d.count)));
-	const busiestHour = $derived(Math.max(1, ...view.pace.map((p) => p.drinks)));
+	// By ethanol, like the ranking, so a bar and the figure on it say the same thing.
+	const busiestHour = $derived(Math.max(1, ...view.pace.map((p) => p.ethanolMl)));
 
 	const hours = $derived(Math.floor(view.elapsedMinutes / 60));
 	const mins = $derived(view.elapsedMinutes % 60);
@@ -286,7 +287,13 @@
 					<div class="pace">
 						{#each view.pace as bucket, i (i)}
 							<div class:now={i === view.pace.length - 1}>
-								<i style="height: {Math.round((bucket.drinks / busiestHour) * 100)}%"></i>
+								<!-- The bar is measured against its own track, not the column, so
+								     the figure riding on top of it never squeezes the bars level. -->
+								<span class="track">
+									<i style="height: {Math.round((bucket.ethanolMl / busiestHour) * 100)}%">
+										{#if bucket.ethanolMl > 0}<b>{bucket.ethanolMl} ml</b>{/if}
+									</i>
+								</span>
 								<em>{pad(bucket.hour)}</em>
 							</div>
 						{/each}
@@ -742,7 +749,30 @@
 		height: 100%;
 	}
 
+	.track {
+		flex: 1;
+		display: flex;
+		align-items: flex-end;
+		width: 100%;
+		/* Room above the tallest bar for its figure. */
+		padding-top: 16px;
+	}
+
+	.pace b {
+		position: absolute;
+		bottom: calc(100% + 3px);
+		left: 50%;
+		transform: translateX(-50%);
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
+		font-size: clamp(9px, 0.8vw, 12px);
+		font-weight: 600;
+		font-style: normal;
+		color: var(--ink);
+		white-space: nowrap;
+	}
+
 	.pace i {
+		position: relative;
 		display: block;
 		width: 100%;
 		background: var(--ink);

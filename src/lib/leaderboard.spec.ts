@@ -201,6 +201,21 @@ describe('reduceLog: tempo', () => {
 		expect(view.elapsedMinutes).toBe(75);
 	});
 
+	it('adds up the ethanol of each hour', () => {
+		const view = reduceLog(
+			[
+				drink('a', 'beer', { at: at(19, 50) }),
+				drink('a', 'shot', { at: at(20, 10) }),
+				drink('a', 'beer', { at: at(20, 40) })
+			],
+			DRINKS
+		);
+		const ml = (key: string) => DRINKS.find((d) => d.key === key)?.ethanolMl ?? 0;
+		const [beer, shot] = [ml('beer'), ml('shot')];
+		expect(beer * shot).toBeGreaterThan(0);
+		expect(view.pace.map((p) => p.ethanolMl)).toEqual([beer, beer + shot]);
+	});
+
 	it('stays empty before anybody drinks anything', () => {
 		const view = reduceLog([], DRINKS);
 		expect(view.pace).toEqual([]);

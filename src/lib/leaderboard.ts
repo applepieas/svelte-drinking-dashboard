@@ -26,11 +26,13 @@ export interface DrinkTotal {
 	ethanolMl: number;
 }
 
-/** How many drinks landed in one clock hour, for the pace strip. */
+/** What landed in one clock hour, for the pace strip. */
 export interface PaceBucket {
 	/** Hour of the day, 0-23, in the reader's own zone. */
 	hour: number;
 	drinks: number;
+	/** Pure ethanol in that hour, the same measure the ranking uses. */
+	ethanolMl: number;
 }
 
 export interface EventView {
@@ -142,9 +144,17 @@ export function reduceLog(entries: LogEntry[], drinks: DrinkDef[], recentLimit =
 		start.setMinutes(0, 0, 0);
 		for (let at = start.getTime(); at <= newest; at += HOUR_MS) {
 			const until = at + HOUR_MS;
+			const inHour = live.filter((item) => {
+				const time = Date.parse(item.at);
+				return time >= at && time < until;
+			});
 			pace.push({
 				hour: new Date(at).getHours(),
-				drinks: times.filter((time) => time >= at && time < until).length
+				drinks: inHour.length,
+				ethanolMl: inHour.reduce(
+					(sum, item) => sum + ((item.drinkKey && ethanol.get(item.drinkKey)) || 0),
+					0
+				)
 			});
 		}
 	}
