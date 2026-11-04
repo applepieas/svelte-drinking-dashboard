@@ -15,6 +15,7 @@
 	} from '$lib/art/density';
 	import { reduceLog } from '$lib/leaderboard';
 	import { liveLog } from '$lib/liveLog.svelte';
+	import { keepScreenAwake } from '$lib/wakeLock';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -25,7 +26,11 @@
 	 * plain links stay on the board instead, so nothing becomes unreachable.
 	 */
 	let hydrated = $state(false);
-	onMount(() => (hydrated = true));
+	onMount(() => {
+		hydrated = true;
+		// The board is left alone on a TV all night; it must not go to sleep.
+		return keepScreenAwake();
+	});
 
 	const log = liveLog(
 		() => data.event.code,
