@@ -25,7 +25,15 @@ const MAX_AGE = 30 * 24 * 60 * 60;
  */
 export function ensureCookieId(event: RequestEvent): string {
 	if (event.locals.cookieId) return event.locals.cookieId;
+	return freshCookieId(event);
+}
 
+/**
+ * Makes this browser somebody new. The old id is forgotten here and nowhere
+ * else: its participant row and drinks stay in the event, so the person it was
+ * stays on the board.
+ */
+export function freshCookieId(event: RequestEvent): string {
 	const cookieId = crypto.randomUUID();
 	event.cookies.set(IDENTITY_COOKIE, cookieId, { path: '/', maxAge: MAX_AGE, ...COOKIE_OPTIONS });
 	// Also on locals, so the rest of this same request can see it.

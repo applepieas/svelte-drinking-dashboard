@@ -110,7 +110,7 @@ test('the host can switch between the screen and logging on one device', async (
 		// The toggle leaves the board once the page has hydrated.
 		await expect(page.getByRole('link', { name: 'Zapisovat', exact: true })).toHaveCount(0);
 		await page.keyboard.press('v');
-		await page.getByRole('link', { name: /Zapisovat odsud/ }).click();
+		await page.getByRole('link', { name: /(Zapisovat|Připojit se) odsud/ }).click();
 	};
 
 	// Not joined yet, so the write side has to start at the nick form.

@@ -1,6 +1,7 @@
 import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 import { isDrinkKey, withDrink } from '$lib/drinks';
 import { normalizeCode } from './codes';
+import { freshCookieId } from './identity';
 import { closeEvent, deleteEvent, kickParticipant, reopenEvent, setEventDrinks } from './commands';
 import { getEventByCode } from './queries';
 import { hashToken } from './tokens';
@@ -65,6 +66,17 @@ export function hostActions(back: (code: string) => string) {
 			if (next.length > 0) await setEventDrinks(event.id, next);
 
 			redirect(303, back(code));
+		},
+
+		/**
+		 * One screen standing in for several phones, mostly for trying the party
+		 * out before anyone arrives. The host cookie is separate, so this browser
+		 * stays the host.
+		 */
+		novyhrac: async (requestEvent: HostRequest) => {
+			const { code } = await requireHost(requestEvent);
+			freshCookieId(requestEvent);
+			redirect(303, `/a/${code}/pripojit`);
 		},
 
 		vykopnout: async (requestEvent: HostRequest) => {

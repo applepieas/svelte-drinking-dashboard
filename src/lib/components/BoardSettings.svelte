@@ -129,8 +129,17 @@
 						? resolve('/a/[kod]/zapis', { kod: code })
 						: resolve('/a/[kod]/pripojit', { kod: code })}
 				>
-					Zapisovat odsud ⟶
+					{joined ? 'Zapisovat odsud' : 'Připojit se odsud'} ⟶
 				</a>
+				{#if joined}
+					<form method="POST" action="?/novyhrac">
+						<button class="btn quiet">Připojit dalšího hráče</button>
+					</form>
+					<p class="dim">
+						Tenhle prohlížeč pak bude za nového hráče. Ten dosavadní zůstává ve hře i se zápisy, jen
+						odsud už za něj zapisovat nepůjde.
+					</p>
+				{/if}
 			</section>
 		{/if}
 
