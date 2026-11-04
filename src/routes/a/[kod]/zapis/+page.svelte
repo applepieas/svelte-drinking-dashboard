@@ -168,6 +168,7 @@
 
 	<form method="POST" action="?/zapsat" use:enhance={logDrink} class="pours">
 		<input type="hidden" name="submissionId" value={data.submissionId} />
+		<input type="hidden" name="nick" value={data.me.nick} />
 		{#each data.event.drinks as drink (drink.key)}
 			<button
 				class="pour"
@@ -189,6 +190,7 @@
 		<form method="POST" action="?/vzitZpet" use:enhance={takeBack} class="undo">
 			<input type="hidden" name="submissionId" value={data.submissionId} />
 			<input type="hidden" name="seq" value={data.undoable.seq} />
+			<input type="hidden" name="nick" value={data.me.nick} />
 			<button class="btn undo-btn" disabled={submitting}>
 				Vzít zpět: {undoneLabel ?? 'poslední zápis'}
 				<span class="num undo-left">({undoSecondsLeft} s)</span>

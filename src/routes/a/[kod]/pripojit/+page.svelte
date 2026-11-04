@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Tally from '$lib/art/Tally.svelte';
 	import { DRINKS, type DrinkKey } from '$lib/drinks';
 	import { NICK_MAX } from '$lib/nicks';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	/** Set when another tab of this browser already joined under a different nick. */
+	const already = $derived(form && 'already' in form ? form.already : null);
 
 	const labels = Object.fromEntries(
 		Object.values(DRINKS).map((drink) => [drink.key, drink.label])
@@ -23,6 +27,19 @@
 
 	{#if form?.error}
 		<p class="alert" role="alert">{form.error}</p>
+	{/if}
+
+	{#if already}
+		<!-- The way out of a shared cookie: the host can turn this browser into a
+		     new player, anyone else continues as the one it already is. -->
+		<div class="switch">
+			{#if data.isHost}
+				<form method="POST" action={resolve('/a/[kod]', { kod: data.event.code }) + '?/novyhrac'}>
+					<button class="btn">Udělat z prohlížeče nového hráče</button>
+				</form>
+			{/if}
+			<a href={resolve('/a/[kod]/zapis', { kod: data.event.code })}>Pokračovat jako {already}</a>
+		</div>
 	{/if}
 
 	<form method="POST" class="card join">
@@ -59,6 +76,13 @@
 		justify-content: center;
 		gap: 20px;
 		padding: 24px 16px calc(32px + env(safe-area-inset-bottom));
+	}
+
+	.switch {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 14px;
 	}
 
 	.glasses {

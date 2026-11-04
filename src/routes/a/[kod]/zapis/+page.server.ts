@@ -32,6 +32,21 @@ async function requireContext({ params, locals }: { params: RouteParams; locals:
 	return { code, event, me };
 }
 
+/**
+ * Every tab of a browser is the same player, because they share one cookie. So
+ * after the host makes this browser somebody new, an older tab still shows the
+ * previous nick while the cookie already points at the new one. The page says
+ * who it is writing for, and a write is refused when that is no longer true,
+ * rather than landing on the wrong person.
+ */
+function wrongPlayer(form: FormData, me: { nick: string }) {
+	const shown = String(form.get('nick') ?? '');
+	if (!shown || shown === me.nick) return null;
+	return fail(409, {
+		error: `Tenhle prohlížeč teď hraje za ${me.nick}, ne za ${shown}. Nic se nezapsalo, načti stránku znovu.`
+	});
+}
+
 function isUndoable(createdAt: Date): boolean {
 	return Date.now() - createdAt.getTime() <= UNDO_WINDOW_SECONDS * 1000;
 }
@@ -70,6 +85,8 @@ export const actions: Actions = {
 		}
 
 		const { code, event, me } = await requireContext(requestEvent);
+		const mismatch = wrongPlayer(form, me);
+		if (mismatch) return mismatch;
 
 		// Validated against this event's snapshot, not the global DRINKS list.
 		if (!event.drinks.some((drink) => drink.key === drinkKey)) {
@@ -95,6 +112,8 @@ export const actions: Actions = {
 		}
 
 		const { code, event, me } = await requireContext(requestEvent);
+		const mismatch = wrongPlayer(form, me);
+		if (mismatch) return mismatch;
 
 		// Re-read rather than trusting the seq from the form: it must still be
 		// this participant's own most recent live drink.
