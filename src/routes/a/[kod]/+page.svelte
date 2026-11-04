@@ -186,139 +186,129 @@
 		<p class="alert">Akce skončila. Tohle je konečné pořadí.</p>
 	{/if}
 
-	{#if view.leaderboard.length === 0}
-		<section class="empty">
-			<div class="startmat">
-				{#if !data.event.closedAt}
-					<img
-						class="qr"
-						src={resolve('/a/[kod]/qr', { kod: data.event.code })}
-						alt="QR kód pro připojení k akci {data.event.code}"
-					/>
-				{/if}
-				<div class="startwords">
-					<p class="lbl">Přidej se</p>
-					<p class="code-huge">{data.event.code}</p>
-					<p class="lbl">{data.joinUrl.split('/a/')[0].replace(/^https?:\/\//, '')}</p>
-				</div>
+	<div class="wrap">
+		<div class="left">
+			<div class="mats">
+				<ol class="ranking" role="list" aria-label="Žebříček">
+					{#each topRows as row, i (row.nick)}
+						<li
+							class="mat"
+							class:lead={i === 0 && podium}
+							class:silver={i === 1 && podium}
+							class:bronze={i === 2 && podium}
+						>
+							<div>
+								<h2 class="nick">{row.nick}</h2>
+								<p class="cnt">{drinks(row.drinks)}</p>
+							</div>
+							<p class="ml">{row.ethanolMl} ml</p>
+							<Tally keys={row.mix} px={i === 0 && podium ? 1.4 : 0.95} {labels} />
+						</li>
+					{/each}
+				</ol>
 			</div>
-			<p class="waiting">Zatím nikdo nic nezapsal.</p>
-		</section>
-	{:else}
-		<div class="wrap">
-			<div class="left">
-				<div class="mats">
-					<ol class="ranking" role="list" aria-label="Žebříček">
-						{#each topRows as row, i (row.nick)}
-							<li
-								class="mat"
-								class:lead={i === 0 && podium}
-								class:silver={i === 1 && podium}
-								class:bronze={i === 2 && podium}
-							>
-								<div>
-									<h2 class="nick">{row.nick}</h2>
-									<p class="cnt">{drinks(row.drinks)}</p>
-								</div>
-								<p class="ml">{row.ethanolMl} ml</p>
-								<Tally keys={row.mix} px={i === 0 && podium ? 1.4 : 0.95} {labels} />
+
+			<!-- No screen of its own for an empty party: the invitation already
+			     covers the board at the start, and once it is put away the host
+			     should see the board they will be looking at all night. -->
+			{#if view.leaderboard.length === 0}
+				<p class="waiting">Zatím nikdo nic nezapsal.</p>
+			{/if}
+
+			{#if view.leaderboard.length > tiers.top}
+				<div class="shell" bind:clientHeight={shellHeight}>
+					<ol
+						class="smalls"
+						role="list"
+						aria-label="Dál v pořadí"
+						style="--cols: {density.columns}; --scale: {density.scale}"
+					>
+						{#each smallRows as row, i (row.nick)}
+							<!-- offsetHeight, not clientHeight: the border is part of the row
+							     too, and leaving it out clipped the last row on a full board. -->
+							<li class="small" bind:offsetHeight={cardHeight}>
+								<span class="place">{tiers.top + i + 1}</span>
+								<span class="sname">{row.nick}</span>
+								<span class="sml">{row.ethanolMl} ml</span>
 							</li>
 						{/each}
 					</ol>
+					{#if view.leaderboard.length === 0}
+						<p class="waiting">Zatím nikdo nic nezapsal.</p>
+					{/if}
 				</div>
+			{/if}
 
-				{#if view.leaderboard.length > tiers.top}
-					<div class="shell" bind:clientHeight={shellHeight}>
-						<ol
-							class="smalls"
-							role="list"
-							aria-label="Dál v pořadí"
-							style="--cols: {density.columns}; --scale: {density.scale}"
-						>
-							{#each smallRows as row, i (row.nick)}
-								<!-- offsetHeight, not clientHeight: the border is part of the row
-								     too, and leaving it out clipped the last row on a full board. -->
-								<li class="small" bind:offsetHeight={cardHeight}>
-									<span class="place">{tiers.top + i + 1}</span>
-									<span class="sname">{row.nick}</span>
-									<span class="sml">{row.ethanolMl} ml</span>
-								</li>
-							{/each}
-						</ol>
-					</div>
-				{/if}
-
-				{#if tiers.rest > 0}
-					<p class="more">{others(tiers.rest)}</p>
-				{/if}
-			</div>
-
-			<div class="side">
-				<section class="tile">
-					<h2>Co se pilo</h2>
-					{#each view.byDrink as drink (drink.key)}
-						<div class="mixrow">
-							<Tally keys={[drink.key]} px={0.9} {labels} />
-							<span class="lbl2">{labels[drink.key]}</span>
-							<span class="n">{drink.count}<small>{drink.ethanolMl} ml</small></span>
-							<span class="bar">
-								<span
-									style="width: {Math.round(
-										(drink.count / busiestDrink) * 100
-									)}%; background: {colours[drink.key]}"
-								></span>
-							</span>
-						</div>
-					{/each}
-				</section>
-
-				{#if view.lastHour.length > 0}
-					<section class="tile">
-						<h2>Poslední hodina</h2>
-						<p class="hour">
-							<span class="who">{view.lastHour[0].nick}</span>
-							<span class="num"
-								>{drinks(view.lastHour[0].drinks)} · {view.lastHour[0].ethanolMl} ml</span
-							>
-						</p>
-						<ul class="chase">
-							{#each view.lastHour.slice(1, 4) as row (row.nick)}
-								<li><b>{row.nick}</b> {row.drinks} · {row.ethanolMl} ml</li>
-							{/each}
-						</ul>
-					</section>
-				{/if}
-
-				{#if view.pace.length > 1}
-					<section class="tile grow">
-						<h2>Tempo po hodinách</h2>
-						<div class="pace">
-							{#each view.pace as bucket, i (i)}
-								<div class:now={i === view.pace.length - 1}>
-									<i style="height: {Math.round((bucket.drinks / busiestHour) * 100)}%"></i>
-									<em>{pad(bucket.hour)}</em>
-								</div>
-							{/each}
-						</div>
-					</section>
-				{/if}
-			</div>
+			{#if tiers.rest > 0}
+				<p class="more">{others(tiers.rest)}</p>
+			{/if}
 		</div>
 
-		{#if view.recent.length > 0}
-			<footer class="feed">
-				{#each view.recent.slice(0, 7) as item (item.seq)}
-					<span>
-						{time.format(new Date(item.at))}
-						<b>{item.nick}</b>
-						{labelFor(item.drinkKey)}
-					</span>
+		<div class="side">
+			<section class="tile">
+				<h2>Co se pilo</h2>
+				{#each view.byDrink as drink (drink.key)}
+					<div class="mixrow">
+						<Tally keys={[drink.key]} px={0.9} {labels} />
+						<span class="lbl2">{labels[drink.key]}</span>
+						<span class="n">{drink.count}<small>{drink.ethanolMl} ml</small></span>
+						<span class="bar">
+							<span
+								style="width: {Math.round(
+									(drink.count / busiestDrink) * 100
+								)}%; background: {colours[drink.key]}"
+							></span>
+						</span>
+					</div>
 				{/each}
-			</footer>
-		{/if}
+			</section>
+
+			{#if view.lastHour.length > 0}
+				<section class="tile">
+					<h2>Poslední hodina</h2>
+					<p class="hour">
+						<span class="who">{view.lastHour[0].nick}</span>
+						<span class="num"
+							>{drinks(view.lastHour[0].drinks)} · {view.lastHour[0].ethanolMl} ml</span
+						>
+					</p>
+					<ul class="chase">
+						{#each view.lastHour.slice(1, 4) as row (row.nick)}
+							<li><b>{row.nick}</b> {row.drinks} · {row.ethanolMl} ml</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
+			{#if view.pace.length > 1}
+				<section class="tile grow">
+					<h2>Tempo po hodinách</h2>
+					<div class="pace">
+						{#each view.pace as bucket, i (i)}
+							<div class:now={i === view.pace.length - 1}>
+								<i style="height: {Math.round((bucket.drinks / busiestHour) * 100)}%"></i>
+								<em>{pad(bucket.hour)}</em>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		</div>
+	</div>
+
+	{#if view.recent.length > 0}
+		<footer class="feed">
+			{#each view.recent.slice(0, 7) as item (item.seq)}
+				<span>
+					{time.format(new Date(item.at))}
+					<b>{item.nick}</b>
+					{labelFor(item.drinkKey)}
+				</span>
+			{/each}
+		</footer>
 	{/if}
 
-	{#if view.leaderboard.length > 0 && !data.event.closedAt}
+	{#if !data.event.closedAt}
 		<!-- A plain checkbox rather than component state, so the invitation can be
 		     put away without JavaScript too. The script only remembers it. -->
 		<input
@@ -786,37 +776,13 @@
 		color: var(--ink);
 	}
 
-	/* Before anybody has drunk anything the screen has one job: get people in.
-	   So the invitation is the board - the same mat the populated screen keeps
-	   in the corner, grown to fill the room. */
-	.empty {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: clamp(14px, 2vw, 26px);
-	}
-
-	.startmat {
-		display: flex;
-		align-items: center;
-		gap: clamp(16px, 2.4vw, 38px);
-		border: 4px solid var(--ink);
-		background: var(--ink);
-		color: var(--paper);
-		box-shadow: 6px 6px 0 rgb(21 18 12 / 0.18);
-		padding: clamp(16px, 2vw, 30px);
-	}
-
 	.startwords {
 		display: flex;
 		flex-direction: column;
 	}
 
-	/* The board's opening screen once people have started drinking: the same
-	   invitation as the empty board, laid over everything until somebody waves
-	   it away. */
+	/* The board's opening screen: the invitation, laid over everything until
+	   somebody waves it away. */
 	.seen {
 		position: absolute;
 		opacity: 0;
@@ -936,14 +902,6 @@
 		}
 	}
 
-	.empty .qr {
-		width: clamp(120px, 16vw, 220px);
-		height: auto;
-		flex: none;
-		background: #fff;
-		padding: 6px;
-	}
-
 	/* Copied letter by letter into a phone, so it follows the rule for anything
 	   read and retyped: the mono face. In the pixel one a 5 reads as an S. */
 	.code-huge {
@@ -959,14 +917,6 @@
 		margin: 0;
 		color: var(--quiet);
 		font-size: clamp(13px, 1.2vw, 18px);
-	}
-
-	/* A phone turns the invitation into a column. */
-	@media (max-width: 640px) {
-		.startmat {
-			flex-direction: column;
-			text-align: center;
-		}
 	}
 
 	.admin {

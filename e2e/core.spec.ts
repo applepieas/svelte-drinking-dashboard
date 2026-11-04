@@ -14,9 +14,15 @@ test('a host can run an event from creation to closing', async ({ page }) => {
 	const code = await createEvent(page, 'host');
 
 	await expect(page.getByRole('heading', { name: `${E2E_PREFIX}host` })).toBeVisible();
-	await expect(page.getByText(`kód ${code}`)).toBeVisible();
-	// The screen must always show a way in.
-	await expect(page.getByRole('img', { name: /QR kód/ })).toBeVisible();
+	await expect(page.locator('header').getByText(`kód ${code}`)).toBeVisible();
+
+	// A fresh event opens on the invitation, and the way past it is there from
+	// the start: nobody has to drink first for the host to reach the board.
+	const invitation = page.getByRole('region', { name: 'Pozvánka' });
+	await expect(invitation.getByRole('img', { name: /QR kód/ })).toBeVisible();
+	await invitation.getByText('Pokračovat na tabuli').click();
+	await expect(invitation).toBeHidden();
+	await expect(page.getByText('Zatím nikdo nic nezapsal.')).toBeVisible();
 
 	await page.goto(`/a/${code}/sprava`);
 	await page.getByRole('button', { name: 'Ukončit akci' }).click();
@@ -95,6 +101,9 @@ test('the host can switch between the screen and logging on one device', async (
 	 */
 	const toLogging = async () => {
 		if (test.info().project.name === 'no-js') {
+			// Nothing remembers the invitation without a script, so it is back on
+			// every visit and has to be put away first.
+			await page.getByText('Pokračovat na tabuli').click();
 			await page.getByRole('link', { name: 'Zapisovat' }).click();
 			return;
 		}
