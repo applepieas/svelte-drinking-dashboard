@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
+		"dev:neon": "vite dev --mode neon --port 5174",
 		"build": "wrangler types && vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
 		"prepare": "svelte-kit sync && wrangler types || echo ''",
@@ -18,6 +19,7 @@
 		"gen": "wrangler types",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:migrate:neon": "node --env-file=.env.neon node_modules/drizzle-kit/bin.cjs migrate",
 		"db:studio": "drizzle-kit studio"
 	},
 	"devDependencies": {

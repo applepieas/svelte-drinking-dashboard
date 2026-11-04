@@ -35,6 +35,12 @@ event, and scan the QR code with a phone on the same network. `--host` matters:
 the QR code points at whatever address you opened, so a phone needs the one on
 your network rather than `localhost`.
 
+To run against Neon instead, put its connection string in `.env.neon` as
+`DATABASE_URL` (Vite reads it on top of `.env`, and git ignores it). Then
+`pnpm db:migrate:neon` once and `pnpm dev:neon --host`, which serves on port
+5174 so it can run beside the local one. If that is the deployed app's
+database, everything you click there happens in production.
+
 **3. Put it online.** One Worker.
 
 ```sh
