@@ -145,12 +145,13 @@
 </script>
 
 <main class="page">
+	<!-- Who you are writing for comes first. A phone gets passed around, and a
+	     browser can be switched to another player, so the nick is the thing to
+	     check before tapping; the party is only context. -->
 	<header class="head">
-		<h1>{data.event.name}</h1>
-		<p class="who">
-			{data.me.nick} &middot; <span class="num">{total}</span>
-			{entries(total)}
-		</p>
+		<p class="party">{data.event.name}</p>
+		<h1 class="nick">{data.me.nick}</h1>
+		<p class="who"><span class="num">{total}</span> {entries(total)}</p>
 	</header>
 
 	{#if data.isHost}
@@ -277,6 +278,20 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
+	}
+
+	.party {
+		margin: 0;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--quiet);
+	}
+
+	.nick {
+		margin: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.who {
