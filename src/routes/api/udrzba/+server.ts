@@ -5,12 +5,14 @@ import { runMaintenance } from '$lib/server/demo';
 import { sha256Hex } from '$lib/server/tokens';
 
 /**
- * Scheduled housekeeping: delete events past their retention window, and keep
+ * Housekeeping on demand: delete events past their retention window, and keep
  * the public demo running.
  *
- * It is an HTTP endpoint rather than a Worker `scheduled` handler because
- * adapter-cloudflare only emits `fetch`. A cron trigger calls this instead,
- * which has the side benefit of working the same way locally and in CI.
+ * Nothing calls this on a timer. The demo is advanced by its own page loads
+ * (see `maintainIfDue`), because a request every couple of minutes kept the
+ * database's compute awake around the clock and spent a month of it in a week.
+ * This endpoint is the manual handle on the same job - for a deploy, a wipe, or
+ * the end-to-end suite, which needs the demo seeded before it can look at it.
  */
 export const POST: RequestHandler = async ({ request }) => {
 	const secret = env.MAINTENANCE_SECRET;

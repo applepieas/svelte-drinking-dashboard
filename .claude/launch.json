@@ -4,8 +4,14 @@
 		{
 			"name": "na-ex-dev",
 			"runtimeExecutable": "pnpm",
-			"runtimeArgs": ["dev"],
+			"runtimeArgs": ["dev", "--host"],
 			"port": 5173
+		},
+		{
+			"name": "na-ex-neon",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": ["dev:neon", "--host"],
+			"port": 5174
 		}
 	]
 }

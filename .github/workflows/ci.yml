@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the older run worthless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Types, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The version is pinned here because package.json has no packageManager
+      # field; it matches the lockfile's format.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm build
+
+  tests:
+    name: Unit, integration, end-to-end
+    runs-on: ubuntu-latest
+    # The same PostgreSQL major as local development. Neon is not used here: the
+    # driver is picked by host, so a plain server exercises the wire-protocol
+    # path, and CI cannot spend the free compute quota.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: naex
+          POSTGRES_PASSWORD: naex
+          POSTGRES_DB: naex_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U naex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Only the test variable is set. DATABASE_URL stays unset, so the guards
+      # that refuse to run against the development database have nothing to
+      # trip over, and the integration project is enabled because this is
+      # exported for the whole job rather than read from a .env file.
+      TEST_DATABASE_URL: postgres://naex:naex@localhost:5432/naex_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Chromium serves both the browser component tests and the e2e suite.
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Migrate the test database
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+      - run: pnpm exec vitest --run
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

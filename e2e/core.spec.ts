@@ -14,9 +14,15 @@ test('a host can run an event from creation to closing', async ({ page }) => {
 	const code = await createEvent(page, 'host');
 
 	await expect(page.getByRole('heading', { name: `${E2E_PREFIX}host` })).toBeVisible();
-	await expect(page.getByText(`Kód: ${code}`)).toBeVisible();
-	// The screen must always show a way in.
-	await expect(page.getByRole('img', { name: /QR kód/ })).toBeVisible();
+	await expect(page.locator('header').getByText(`kód ${code}`)).toBeVisible();
+
+	// A fresh event opens on the invitation, and the way past it is there from
+	// the start: nobody has to drink first for the host to reach the board.
+	const invitation = page.getByRole('region', { name: 'Pozvánka' });
+	await expect(invitation.getByRole('img', { name: /QR kód/ })).toBeVisible();
+	await invitation.getByText('Pokračovat na tabuli').click();
+	await expect(invitation).toBeHidden();
+	await expect(page.getByText('Zatím nikdo nic nezapsal.')).toBeVisible();
 
 	await page.goto(`/a/${code}/sprava`);
 	await page.getByRole('button', { name: 'Ukončit akci' }).click();
@@ -43,6 +49,11 @@ test('a guest joins, logs a drink and takes it back', async ({ page }) => {
 test('the leaderboard ranks by ethanol rather than by number of drinks', async ({ page }) => {
 	const code = await createEvent(page, 'ethanol');
 
+	// A new event leaves the alcohol-free drink out until the host asks for it.
+	await page.goto(`/a/${code}/sprava`);
+	await page.getByRole('button', { name: 'Zapnout nealko' }).click();
+	await expect(page.getByText('Nealko je ve hře.')).toBeVisible();
+
 	await join(page, code, 'nealkoholik');
 	for (let i = 0; i < 3; i++) {
 		await page.getByRole('button', { name: /^Nealko/ }).click();
@@ -52,13 +63,19 @@ test('the leaderboard ranks by ethanol rather than by number of drinks', async (
 	// A second device: clearing cookies is what makes this a different person.
 	await page.context().clearCookies();
 	await join(page, code, 'panakar');
-	await page.getByRole('button', { name: /^Panák/ }).click();
+	await page.getByRole('button', { name: /^Tvrdý/ }).click();
 	await expect(page.getByText(/1\s+zápis/)).toBeVisible();
 
 	await page.goto(`/a/${code}`);
-	const rows = page.getByRole('listitem').filter({ hasText: /ml$/ });
+	const rows = page.getByRole('list', { name: 'Žebříček' }).getByRole('listitem');
 	await expect(rows.first()).toContainText('panakar');
 	await expect(rows.nth(1)).toContainText('nealkoholik');
+
+	// The invitation covers the board until it is put away, JavaScript or not.
+	const invitation = page.getByRole('region', { name: 'Pozvánka' });
+	await expect(invitation).toBeVisible();
+	await page.getByText('Pokračovat na tabuli').click();
+	await expect(invitation).toBeHidden();
 });
 
 test('a taken nick is refused', async ({ page }) => {
@@ -78,8 +95,26 @@ test('an unknown code is not found', async ({ page }) => {
 test('the host can switch between the screen and logging on one device', async ({ page }) => {
 	const code = await createEvent(page, 'toggle');
 
+	/**
+	 * With JavaScript the host's controls fold into the settings panel; without
+	 * it the plain toggle stays on the board. Either way there is a way through.
+	 */
+	const toLogging = async () => {
+		if (test.info().project.name === 'no-js') {
+			// Nothing remembers the invitation without a script, so it is back on
+			// every visit and has to be put away first.
+			await page.getByText('Pokračovat na tabuli').click();
+			await page.getByRole('link', { name: 'Zapisovat' }).click();
+			return;
+		}
+		// The toggle leaves the board once the page has hydrated.
+		await expect(page.getByRole('link', { name: 'Zapisovat', exact: true })).toHaveCount(0);
+		await page.keyboard.press('v');
+		await page.getByRole('link', { name: /(Zapisovat|Připojit se) odsud/ }).click();
+	};
+
 	// Not joined yet, so the write side has to start at the nick form.
-	await page.getByRole('link', { name: 'Zapisovat' }).click();
+	await toLogging();
 	await page.waitForURL(`**/a/${code}/pripojit`);
 
 	await join(page, code, 'hostitel');
@@ -89,7 +124,7 @@ test('the host can switch between the screen and logging on one device', async (
 	await page.waitForURL(`**/a/${code}`);
 
 	// Now that they are in, the toggle goes straight to logging.
-	await page.getByRole('link', { name: 'Zapisovat' }).click();
+	await toLogging();
 	await page.waitForURL(`**/a/${code}/zapis`);
 	await page.getByRole('button', { name: /^Pivo/ }).click();
 	await expect(page.getByText(/1\s+zápis/)).toBeVisible();

@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { event } from '$lib/server/db/schema';
 import { DRINKS, isDrinkKey } from '$lib/drinks';
 import { generateCode } from '$lib/server/codes';
+import { COOKIE_OPTIONS } from '$lib/server/identity';
 import { checkEventCreationRate, hashIp } from '$lib/server/ratelimit';
 import { hashToken, newHostToken } from '$lib/server/tokens';
 
@@ -70,7 +71,11 @@ export const actions: Actions = {
 
 		// Plain token to the browser, digest to the database — never the other way round.
 		// Keyed by code so one browser can host several events at once.
-		cookies.set(`host_${code}`, hostToken, { path: '/', maxAge: RETENTION_SECONDS });
+		cookies.set(`host_${code}`, hostToken, {
+			path: '/',
+			maxAge: RETENTION_SECONDS,
+			...COOKIE_OPTIONS
+		});
 
 		// Must stay outside any try/catch: redirect works by throwing.
 		redirect(303, `/a/${code}`);

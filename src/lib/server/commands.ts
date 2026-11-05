@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from './db';
 import { entry, event, participant } from './db/schema';
-import type { DrinkKey } from '$lib/drinks';
+import type { DrinkDef, DrinkKey } from '$lib/drinks';
 
 /**
  * Appends a drink. Returns null when this submission was already recorded —
@@ -46,6 +46,15 @@ export function closeEvent(eventId: string) {
 
 export function reopenEvent(eventId: string) {
 	return db.update(event).set({ closedAt: null }).where(eq(event.id, eventId));
+}
+
+/**
+ * Replaces what the event offers. Entries are not touched: a drink taken off
+ * the list keeps its rows in the log, and the reduction simply stops counting
+ * them until it comes back.
+ */
+export function setEventDrinks(eventId: string, drinks: DrinkDef[]) {
+	return db.update(event).set({ drinks }).where(eq(event.id, eventId));
 }
 
 /**

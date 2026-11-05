@@ -6,19 +6,22 @@ import { DRINKS } from '$lib/drinks';
 // Same reasoning as the other integration spec: the environment cannot be
 // redirected after the fact, so the module is replaced instead.
 vi.mock('./db', async () => {
-	const { drizzle } = await import('drizzle-orm/neon-http');
-	const { neon } = await import('@neondatabase/serverless');
-	const schema = await import('./db/schema');
+	// The same connection rule the application uses, so a local PostgreSQL in
+	// development and a Neon branch in CI both work without a second code path.
+	const { connect } = await import('./db/connect');
 	const url = process.env.TEST_DATABASE_URL;
 	if (!url) throw new Error('TEST_DATABASE_URL is required for integration tests.');
-	return { db: drizzle(neon(url), { schema }) };
+	return { db: await connect(url) };
 });
 
 const { db } = await import('./db');
 const { event, entry } = await import('./db/schema');
-const { runMaintenance } = await import('./demo');
+const { maintainIfDue, runMaintenance } = await import('./demo');
 
 const HOUR_MS = 3_600_000;
+/** Mirrors the throttle inside demo.ts; it is an implementation detail there. */
+const LAZY_TICK_MS = 2 * 60_000;
+const MINUTE_MS = 60_000;
 
 async function removeDemo() {
 	await db.delete(event).where(eq(event.code, DEMO_CODE));
@@ -47,7 +50,7 @@ describe('demo maintenance', () => {
 		expect(await demoRow()).toBeDefined();
 	});
 
-	// Two cron runs overlapping, or a retry, must not double the timeline.
+	// Two runs overlapping, or a retry, must not double the timeline.
 	it('writes nothing new when run again straight away', async () => {
 		await runMaintenance();
 		const before = await countDemoEntries();
@@ -136,5 +139,43 @@ describe('demo maintenance', () => {
 			.from(event)
 			.where(lt(event.expiresAt, new Date()));
 		expect(leftovers).toHaveLength(0);
+	});
+});
+
+describe('maintenance on demand', () => {
+	it('seeds the demo for the first viewer, who has nothing to look at otherwise', async () => {
+		const report = await maintainIfDue();
+
+		expect(report?.demo).toBe('seeded');
+		expect(await demoRow()).toBeDefined();
+	});
+
+	it('leaves the database alone when the demo was just brought up to date', async () => {
+		const seeded = new Date();
+		await maintainIfDue(seeded);
+
+		expect(await maintainIfDue(new Date(seeded.getTime() + 30_000))).toBeNull();
+	});
+
+	it('moves the demo along once the throttle has run out', async () => {
+		const seeded = new Date();
+		await maintainIfDue(seeded);
+
+		const later = await maintainIfDue(new Date(seeded.getTime() + LAZY_TICK_MS + MINUTE_MS));
+
+		expect(later).not.toBeNull();
+		expect(later!.demo).not.toBe('seeded');
+	});
+
+	// A screen, a phone and a laptop opening the demo at once is one tick, not
+	// three: the claim is the same UPDATE that records it.
+	it('does the work once however many people are watching', async () => {
+		const seeded = new Date();
+		await maintainIfDue(seeded);
+		const due = new Date(seeded.getTime() + LAZY_TICK_MS + MINUTE_MS);
+
+		const reports = await Promise.all([maintainIfDue(due), maintainIfDue(due), maintainIfDue(due)]);
+
+		expect(reports.filter((report) => report !== null)).toHaveLength(1);
 	});
 });

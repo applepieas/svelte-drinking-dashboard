@@ -9,11 +9,13 @@ import { ensureCookieId } from '$lib/server/identity';
 import { findActiveParticipant, findNickHolder, getEventByCode } from '$lib/server/queries';
 import { isEventFull, MAX_PARTICIPANTS } from '$lib/server/ratelimit';
 
-export const load: PageServerLoad = async ({ parent, params }) => {
+export const load: PageServerLoad = async ({ parent, params, request }) => {
 	const { event, me } = await parent();
 	if (event.closedAt) redirect(303, `/a/${params.kod}`);
 	// The nick is fixed once you are in. Getting a new one means being kicked first.
-	if (me) redirect(303, `/a/${params.kod}/zapis`);
+	// Not after a POST, though: load runs again behind a failed action, and the
+	// failure that says this browser is already somebody has to stay on screen.
+	if (me && request.method !== 'POST') redirect(303, `/a/${params.kod}/zapis`);
 	return {};
 };
 
@@ -39,7 +41,19 @@ export const actions: Actions = {
 		if (row.closedAt) redirect(303, `/a/${code}`);
 
 		const cookieId = ensureCookieId(requestEvent);
-		if (await findActiveParticipant(row.id, cookieId)) redirect(303, `/a/${code}/zapis`);
+		const already = await findActiveParticipant(row.id, cookieId);
+		if (already) {
+			// The same nick twice is a double tap or a resubmit: they are in, carry on.
+			if (already.nick === nick) redirect(303, `/a/${code}/zapis`);
+			// A different nick means another tab of this browser joined first. Every
+			// tab shares the one cookie, so quietly continuing would hand this person
+			// somebody else's drinks.
+			return fail(409, {
+				nick: submitted,
+				already: already.nick,
+				error: `Tenhle prohlížeč už hraje za ${already.nick}. Všechny záložky jednoho prohlížeče jsou jeden hráč.`
+			});
+		}
 
 		if (await isEventFull(row.id)) {
 			return fail(409, {

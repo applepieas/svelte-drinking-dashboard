@@ -12,12 +12,12 @@ import { eq, sql } from 'drizzle-orm';
  * `./db` resolves to the same module specifier the code under test uses.
  */
 vi.mock('./db', async () => {
-	const { drizzle } = await import('drizzle-orm/neon-http');
-	const { neon } = await import('@neondatabase/serverless');
-	const schema = await import('./db/schema');
+	// The same connection rule the application uses, so a local PostgreSQL in
+	// development and a Neon branch in CI both work without a second code path.
+	const { connect } = await import('./db/connect');
 	const url = process.env.TEST_DATABASE_URL;
 	if (!url) throw new Error('TEST_DATABASE_URL is required for integration tests.');
-	return { db: drizzle(neon(url), { schema }) };
+	return { db: await connect(url) };
 });
 import { DRINKS } from '$lib/drinks';
 import { reduceLog } from '$lib/leaderboard';

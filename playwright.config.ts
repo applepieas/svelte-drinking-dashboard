@@ -36,7 +36,8 @@ export default defineConfig({
 			// The suite creates an event per test from a single address, which is
 			// exactly what the production limit is there to stop.
 			MAX_EVENTS_PER_HOUR: '1000',
-			// The demo test drives the maintenance endpoint the way cron will.
+			// The demo test seeds the demo through the maintenance endpoint rather
+			// than waiting for a page load to do it.
 			MAINTENANCE_SECRET: MAINTENANCE_SECRET
 		}
 	},
